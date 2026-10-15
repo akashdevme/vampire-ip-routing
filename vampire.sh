@@ -293,12 +293,123 @@ show_status() {
   systemctl status wg-quick@wg0 --no-pager -l | head -n 10
 }
 
+start_test_page() {
+  banner
+  echo -e "${GREEN}[+] Setting up VampireHosting IPv4 landing page on Port 80 (HTTP)...${NC}"
+  mkdir -p /var/www/vampire
+
+  cat << "EOF" > /var/www/vampire/index.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VampireHosting — IPv4 Installed</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #09090e; color: #e5e5f0; font-family: 'Outfit', sans-serif;
+      min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      position: relative; overflow-x: hidden; padding: 24px;
+    }
+    body::before {
+      content: ""; position: absolute; top: -150px; left: 50%; transform: translateX(-50%);
+      width: 650px; height: 650px;
+      background: radial-gradient(circle, rgba(168, 85, 247, 0.28) 0%, rgba(239, 68, 68, 0.12) 45%, transparent 70%);
+      z-index: 0; pointer-events: none;
+    }
+    .card {
+      position: relative; z-index: 1; background: rgba(18, 18, 28, 0.85);
+      border: 1px solid rgba(168, 85, 247, 0.35); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+      border-radius: 28px; padding: 52px 40px; max-width: 640px; width: 100%;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 40px -5px rgba(168, 85, 247, 0.25); text-align: center;
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 10px; padding: 8px 18px;
+      background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.45);
+      color: #4ade80; font-size: 0.85rem; font-weight: 700; border-radius: 999px; margin-bottom: 24px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .badge-dot {
+      width: 9px; height: 9px; background-color: #22c55e; border-radius: 50%;
+      box-shadow: 0 0 12px #22c55e; animation: pulse 2s infinite;
+    }
+    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+    .logo {
+      font-size: 3rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px;
+      background: linear-gradient(135deg, #ffffff 20%, #c084fc 70%, #f43f5e 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .subtitle { font-size: 1.15rem; color: #94a3b8; margin-bottom: 32px; line-height: 1.5; }
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 36px; }
+    @media (max-width: 600px) { .feature-grid { grid-template-columns: 1fr; } .card { padding: 32px 20px; } }
+    .feature-box {
+      background: rgba(25, 25, 38, 0.7); border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px; padding: 18px 12px; text-align: center;
+    }
+    .feature-num { font-size: 1.45rem; font-weight: 700; color: #c084fc; margin-bottom: 4px; }
+    .feature-desc { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
+    .status-box {
+      background: #0d0d15; border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 14px;
+      padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #e2e8f0; margin-bottom: 24px;
+    }
+    .status-val { color: #4ade80; font-weight: 600; }
+    .footer { font-size: 0.85rem; color: #64748b; }
+    .footer a { color: #c084fc; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge"><div class="badge-dot"></div>VampireHosting IPv4 Installed</div>
+    <h1 class="logo">VampireHosting</h1>
+    <p class="subtitle">High-RAM Private Node Successfully Connected to Public IPv4.</p>
+    <div class="feature-grid">
+      <div class="feature-box"><div class="feature-num">65,535</div><div class="feature-desc">All Ports Routed</div></div>
+      <div class="feature-box"><div class="feature-num">TCP + UDP</div><div class="feature-desc">Full Support</div></div>
+      <div class="feature-box"><div class="feature-num">&lt; 1 ms</div><div class="feature-desc">Kernel WireGuard</div></div>
+    </div>
+    <div class="status-box">
+      <div>Status: <span class="status-val">● ONLINE</span></div>
+      <div style="color: #c084fc; font-weight: 600;">Port 80 (HTTP) Active</div>
+    </div>
+    <div class="footer">Powered by <a href="https://vampirenodes.in" target="_blank">VampireNodes.in</a></div>
+  </div>
+</body>
+</html>
+EOF
+
+  cat << 'EOF' > /etc/systemd/system/vampire-web.service
+[Unit]
+Description=VampireHosting Test Web Landing Page
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/vampire
+ExecStart=/usr/bin/python3 -m http.server 80
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now vampire-web >/dev/null 2>&1
+  systemctl restart vampire-web
+
+  echo -e "\n${GREEN}${BOLD}✓ VampireHosting landing page is LIVE on Port 80!${NC}"
+  echo -e "Open ${CYAN}http://YOUR_PUBLIC_IP${NC} in any web browser to see it in action!\n"
+}
+
 uninstall_vampire() {
   banner
   echo -e "${RED}[+] Uninstalling Vampire IP Router...${NC}"
-  systemctl stop wg-quick@wg0 2>/dev/null || true
-  systemctl disable wg-quick@wg0 2>/dev/null || true
-  rm -f "$WG_DIR/wg0.conf" "$BIN_DIR/vampire"
+  systemctl stop wg-quick@wg0 vampire-web 2>/dev/null || true
+  systemctl disable wg-quick@wg0 vampire-web 2>/dev/null || true
+  rm -f "$WG_DIR/wg0.conf" "$BIN_DIR/vampire" /etc/systemd/system/vampire-web.service
+  rm -rf /var/www/vampire
   echo -e "${GREEN}[✓] Vampire successfully uninstalled.${NC}"
 }
 
@@ -318,6 +429,9 @@ case "$1" in
     ;;
   status)
     show_status
+    ;;
+  page|web)
+    start_test_page
     ;;
   uninstall)
     uninstall_vampire
