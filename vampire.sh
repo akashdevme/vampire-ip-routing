@@ -120,17 +120,11 @@ setup_gateway() {
   PUBLIC_IFACE=$(detect_public_interface)
   PUBLIC_IP=$(detect_public_ip)
   SSH_PORT=$(detect_ssh_port)
-
-  if [ -z "$custom_domain" ]; then
-    if [ -e /dev/tty ] && [ -r /dev/tty ]; then
-      read -rp "Enter domain/hostname (press ENTER to use $PUBLIC_IP): " custom_domain < /dev/tty 2>/dev/null || true
-    fi
-  fi
-  CONNECT_HOST="${custom_domain:-$PUBLIC_IP}"
-
+  CONNECT_HOST="${custom_domain:-iproute.vampirenodes.in}"
 
   echo -e "${GREEN}[+] Public Interface:${NC} ${BOLD}$PUBLIC_IFACE${NC}"
   echo -e "${GREEN}[+] Public IPv4:${NC}      ${BOLD}$PUBLIC_IP${NC}"
+  echo -e "${GREEN}[+] Gateway Domain:${NC}   ${BOLD}$CONNECT_HOST${NC}"
   echo -e "${GREEN}[+] Detected SSH Port:${NC} ${BOLD}$SSH_PORT (Protected - will not be forwarded)${NC}"
 
   mkdir -p "$WG_DIR" "$VAMPIRE_DIR"
