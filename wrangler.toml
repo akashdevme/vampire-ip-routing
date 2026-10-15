@@ -1,0 +1,20 @@
+name                = "iproute-vampire"
+main                = "worker.js"
+compatibility_date  = "2024-09-23"
+account_id          = "df3dee00d0cc2c24ed4840d5e42c86c1"
+workers_dev         = true
+
+routes = [
+  { pattern = "iproute.vampirenodes.in", custom_domain = true }
+]
+
+# Bundle .sh and .html files as text modules (imported in worker.js)
+rules = [
+  { type = "Text", globs = ["**/*.sh", "**/*.html"], fallthrough = true }
+]
+
+# GEMINI_API_KEY is stored as a Cloudflare Worker Secret.
+# It is NEVER in this file or in code.
+# To set it, run:
+#   npx wrangler secret put GEMINI_API_KEY
+# Then paste your key. It will be encrypted and injected as env.GEMINI_API_KEY.

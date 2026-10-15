@@ -1,21 +1,50 @@
 // ==============================================================================
-// Cloudflare Worker for: iproute.vampirenodes.in
-// - When accessed via curl: Returns the raw bash installer script
-// - When opened in a browser (HTTP/HTTPS): Shows the VampireHosting Landing Page
+// Cloudflare Worker — iproute.vampirenodes.in
+//
+// Routes:
+//   GET  /           → bash installer (curl/wget) OR browser landing page
+//   POST /api/chat   → Proxies Gemini AI using GEMINI_API_KEY secret
+//                      Key is NEVER exposed to the browser. Zero-trust design.
 // ==============================================================================
 
 import vampireScript from "./vampire.sh";
+import landingHtml from "./index.html";
+
+const SYSTEM_PROMPT = `You are Vampire AI, the official technical support bot for VampireHosting (vampirenodes.in). VampireHosting uses FRP (fast reverse proxy) to route cheap, high-RAM private VPSs (NAT VPS, LXC containers, IPv6-only VPS) through a public IPv4 gateway using persistent TCP tunnels for 24/7 uptime. Key commands: "sudo vampire gateway" (public VPS), "sudo vampire node --server IP --token TOKEN" (private VPS), "sudo vampire add <port>" (forward extra ports), "sudo vampire status" (health), "sudo vampire ai" (AI chat). Provide concise, accurate, copy-paste-ready Linux bash commands for: server setup, port forwarding, firewall (ufw/iptables), game servers (Minecraft 25565, FiveM 30120, Palworld 8211, Rust 28015), Pterodactyl wings, nginx reverse proxy, SSL with certbot, and debugging tunnels. Format code in markdown code blocks.`;
 
 export default {
   async fetch(request, env, ctx) {
-    const userAgent = request.headers.get("User-Agent") || "";
-    const acceptHeader = request.headers.get("Accept") || "";
+    const url = new URL(request.url);
+    const method = request.method;
 
-    // 1. Detect if request is from curl / wget / terminal
-    const isTerminal = userAgent.includes("curl") || userAgent.includes("Wget") || !acceptHeader.includes("text/html");
+    // ------------------------------------------------------------------
+    // CORS pre-flight (needed for fetch() from same-origin Worker pages)
+    // ------------------------------------------------------------------
+    if (method === "OPTIONS") {
+      return corsResponse();
+    }
+
+    // ------------------------------------------------------------------
+    // POST /api/chat — Server-side Gemini proxy (key is a CF secret)
+    // ------------------------------------------------------------------
+    if (method === "POST" && url.pathname === "/api/chat") {
+      return handleAI(request, env);
+    }
+
+    // ------------------------------------------------------------------
+    // GET / — curl → bash script, browser → landing page
+    // ------------------------------------------------------------------
+    const userAgent = request.headers.get("User-Agent") || "";
+    const accept    = request.headers.get("Accept") || "";
+    const isTerminal = userAgent.includes("curl") ||
+                       userAgent.includes("Wget") ||
+                       userAgent.includes("wget") ||
+                       (!accept.includes("text/html") && !accept.includes("*/*"));
 
     if (isTerminal) {
-      return new Response(vampireScript, {
+      // Strip UTF-8 BOM if present and ensure clean LF line endings for bash
+      const cleanScript = vampireScript.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
+      return new Response(cleanScript, {
         status: 200,
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
@@ -24,231 +53,83 @@ export default {
       });
     }
 
-    // 2. If opened in a web browser, render the VampireHosting UI page
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VampireHosting — IPv4 Routed & Installed</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-    body {
-      background-color: #09090e;
-      color: #e5e5f0;
-      font-family: 'Outfit', sans-serif;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      overflow-x: hidden;
-      padding: 24px;
-    }
-    /* Glow Background Accents */
-    body::before {
-      content: "";
-      position: absolute;
-      top: -150px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 600px;
-      height: 600px;
-      background: radial-gradient(circle, rgba(168, 85, 247, 0.25) 0%, rgba(239, 68, 68, 0.12) 40%, transparent 70%);
-      z-index: 0;
-      pointer-events: none;
-    }
-    .card {
-      position: relative;
-      z-index: 1;
-      background: rgba(18, 18, 28, 0.75);
-      border: 1px solid rgba(168, 85, 247, 0.3);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border-radius: 24px;
-      padding: 48px;
-      max-width: 680px;
-      width: 100%;
-      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 35px -5px rgba(168, 85, 247, 0.2);
-      text-align: center;
-      animation: fadeIn 0.8s ease-out;
-    }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 16px;
-      background: rgba(34, 197, 94, 0.15);
-      border: 1px solid rgba(34, 197, 94, 0.4);
-      color: #4ade80;
-      font-size: 0.85rem;
-      font-weight: 600;
-      border-radius: 999px;
-      margin-bottom: 24px;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-    .badge-dot {
-      width: 8px;
-      height: 8px;
-      background-color: #22c55e;
-      border-radius: 50%;
-      box-shadow: 0 0 10px #22c55e;
-      animation: pulse 2s infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
-    }
-    .logo {
-      font-size: 2.75rem;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      margin-bottom: 8px;
-      background: linear-gradient(135deg, #ffffff 30%, #c084fc 70%, #f43f5e 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    .subtitle {
-      font-size: 1.15rem;
-      color: #94a3b8;
-      margin-bottom: 32px;
-      line-height: 1.5;
-    }
-    .feature-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 16px;
-      margin-bottom: 36px;
-    }
-    @media (max-width: 600px) {
-      .feature-grid { grid-template-columns: 1fr; }
-      .card { padding: 32px 20px; }
-    }
-    .feature-box {
-      background: rgba(25, 25, 38, 0.6);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      padding: 16px;
-      text-align: center;
-      transition: all 0.3s ease;
-    }
-    .feature-box:hover {
-      border-color: rgba(168, 85, 247, 0.4);
-      transform: translateY(-2px);
-    }
-    .feature-num {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #c084fc;
-      margin-bottom: 4px;
-    }
-    .feature-desc {
-      font-size: 0.8rem;
-      color: #94a3b8;
-      font-weight: 500;
-    }
-    .cmd-box {
-      background: #0d0d15;
-      border: 1px solid rgba(168, 85, 247, 0.25);
-      border-radius: 14px;
-      padding: 14px 18px;
-      text-align: left;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-      color: #e2e8f0;
-      margin-bottom: 24px;
-    }
-    .cmd-text {
-      overflow-x: auto;
-      white-space: nowrap;
-      scrollbar-width: none;
-    }
-    .cmd-text::-webkit-scrollbar { display: none; }
-    .copy-btn {
-      background: #7e22ce;
-      color: #ffffff;
-      border: none;
-      padding: 8px 14px;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: 'Outfit', sans-serif;
-      transition: background 0.2s;
-      flex-shrink: 0;
-    }
-    .copy-btn:hover {
-      background: #9333ea;
-    }
-    .footer {
-      font-size: 0.85rem;
-      color: #64748b;
-    }
-    .footer a {
-      color: #c084fc;
-      text-decoration: none;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="badge">
-      <div class="badge-dot"></div>
-      VampireHosting IPv4 Installed & Active
-    </div>
-    <h1 class="logo">VampireHosting</h1>
-    <p class="subtitle">High-RAM Private Node Successfully Connected to Public IPv4.</p>
-
-    <div class="feature-grid">
-      <div class="feature-box">
-        <div class="feature-num">65,535</div>
-        <div class="feature-desc">All Ports Routed</div>
-      </div>
-      <div class="feature-box">
-        <div class="feature-num">TCP + UDP</div>
-        <div class="feature-desc">Full Protocol Support</div>
-      </div>
-      <div class="feature-box">
-        <div class="feature-num">&lt; 1 ms</div>
-        <div class="feature-desc">Kernel WireGuard Speed</div>
-      </div>
-    </div>
-
-    <div class="cmd-box">
-      <span class="cmd-text">curl -sSL https://iproute.vampirenodes.in | sudo bash</span>
-      <button class="copy-btn" onclick="navigator.clipboard.writeText('curl -sSL https://iproute.vampirenodes.in | sudo bash'); this.innerText='Copied!'; setTimeout(()=>this.innerText='Copy', 2000)">Copy</button>
-    </div>
-
-    <div class="footer">
-      Powered by <a href="https://vampirenodes.in" target="_blank">VampireNodes.in</a> — Instant Public IPv4 Routing for High-RAM VPS
-    </div>
-  </div>
-</body>
-</html>`;
-
-    return new Response(html, {
+    // Browser — serve full landing page with embedded AI chat from index.html
+    return new Response(landingHtml, {
       status: 200,
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": "public, max-age=60",
+        "Cache-Control": "public, max-age=300",
       },
     });
   },
 };
+
+// ==============================================================================
+// AI Handler — all Gemini calls happen here, key NEVER sent to client
+// ==============================================================================
+async function handleAI(request, env) {
+  // Rate-limit guard (basic)
+  const apiKey = env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return jsonResponse({ error: "AI service is not configured. Add GEMINI_API_KEY secret via wrangler." }, 503);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: "Invalid JSON body." }, 400);
+  }
+
+  const userMessage = (body.message || "").slice(0, 2000).trim();
+  if (!userMessage) {
+    return jsonResponse({ error: "Message is required." }, 400);
+  }
+
+  // Build conversation history for multi-turn (optional, sent from browser)
+  const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
+  const contents = [
+    ...history.map((m) => ({
+      role: m.role,
+      parts: [{ text: m.text }],
+    })),
+    { role: "user", parts: [{ text: userMessage }] },
+  ];
+
+  const geminiPayload = {
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents,
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 1024,
+    },
+  };
+
+  let geminiRes;
+  try {
+    geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiPayload),
+      }
+    );
+  } catch (err) {
+    return jsonResponse({ error: "Network error contacting AI service." }, 502);
+  }
+
+  const data = await geminiRes.json();
+
+  if (!geminiRes.ok) {
+    const msg = data?.error?.message || "Gemini API error";
+    return jsonResponse({ error: msg }, geminiRes.status);
+  }
+
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    return jsonResponse({ error: "Empty response from AI." }, 500);
+  }
+
+  return jsonResponse({ reply: text });
+}
