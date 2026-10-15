@@ -1,0 +1,39 @@
+# FRP Client Configuration (Private / NAT VPS)
+# Public VPS IP and port
+serverAddr = "YOUR_PUBLIC_VPS_IP"
+serverPort = 7000
+
+# Authentication secret (must match frps.toml)
+auth.token = "ChangeThisSecretToken123!"
+
+# Example 1: Forward Web HTTP (Port 80)
+[[proxies]]
+name = "http-forward"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 80
+remotePort = 80
+
+# Example 2: Forward Web HTTPS (Port 443)
+[[proxies]]
+name = "https-forward"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 443
+remotePort = 443
+
+# Example 3: Forward SSH (connect to Private VPS SSH via Public VPS port 2222)
+[[proxies]]
+name = "ssh-forward"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = 2222
+
+# Example 4: Forward Game Server / Custom Service (e.g. UDP port)
+# [[proxies]]
+# name = "game-udp"
+# type = "udp"
+# localIP = "127.0.0.1"
+# localPort = 25565
+# remotePort = 25565

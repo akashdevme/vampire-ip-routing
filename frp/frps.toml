@@ -1,0 +1,12 @@
+# FRP Server Configuration (Public VPS)
+# Bind port for FRP client connection
+bindPort = 7000
+
+# Authentication secret (make sure this matches on both server and client)
+auth.token = "ChangeThisSecretToken123!"
+
+# Optional: Web dashboard to monitor traffic and connected proxies
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "admin123"
