@@ -62,18 +62,18 @@ detect_public_interface() {
 
 detect_public_ip() {
   local ip
-  ip=$(curl -s4 --connect-timeout 3 https://api.ipify.org || \
-       curl -s4 --connect-timeout 3 https://icanhazip.com || \
-       curl -s4 --connect-timeout 3 https://ip.sb || \
-       ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+')
-  echo "$ip"
+  ip=$(curl -s4 --connect-timeout 3 https://api.ipify.org 2>/dev/null || \
+       curl -s4 --connect-timeout 3 https://icanhazip.com 2>/dev/null || \
+       curl -s4 --connect-timeout 3 https://ip.sb 2>/dev/null || \
+       ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)
+  echo "${ip:-127.0.0.1}"
 }
 
 detect_ssh_port() {
   local port
-  port=$(ss -tlpn 2>/dev/null | grep -E 'sshd|ssh' | awk '{print $4}' | awk -F':' '{print $NF}' | head -n1)
+  port=$(ss -tlpn 2>/dev/null | grep -E 'sshd|ssh' | awk '{print $4}' | awk -F':' '{print $NF}' | head -n1 || true)
   if [ -z "$port" ] && [ -f /etc/ssh/sshd_config ]; then
-    port=$(grep -E '^Port ' /etc/ssh/sshd_config | awk '{print $2}' | head -n1)
+    port=$(grep -E '^Port ' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -n1 || true)
   fi
   echo "${port:-22}"
 }
@@ -122,7 +122,9 @@ setup_gateway() {
   SSH_PORT=$(detect_ssh_port)
 
   if [ -z "$custom_domain" ]; then
-    read -rp "Enter domain/hostname (press ENTER to use $PUBLIC_IP): " custom_domain
+    if [ -e /dev/tty ] && [ -r /dev/tty ]; then
+      read -rp "Enter domain/hostname (press ENTER to use $PUBLIC_IP): " custom_domain < /dev/tty 2>/dev/null || true
+    fi
   fi
   CONNECT_HOST="${custom_domain:-$PUBLIC_IP}"
 

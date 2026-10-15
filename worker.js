@@ -4,7 +4,7 @@
 // - When opened in a browser (HTTP/HTTPS): Shows the VampireHosting Landing Page
 // ==============================================================================
 
-const GITHUB_RAW_URL = "https://raw.githubusercontent.com/akashdevme/vampire-ip-routing/main/vampire.sh";
+import vampireScript from "./vampire.sh";
 
 export default {
   async fetch(request, env, ctx) {
@@ -15,19 +15,11 @@ export default {
     const isTerminal = userAgent.includes("curl") || userAgent.includes("Wget") || !acceptHeader.includes("text/html");
 
     if (isTerminal) {
-      const res = await fetch(GITHUB_RAW_URL);
-      if (!res.ok) {
-        return new Response("# Error: Unable to fetch vampire script from GitHub.\n", {
-          status: 500,
-          headers: { "Content-Type": "text/plain; charset=utf-8" },
-        });
-      }
-      const script = await res.text();
-      return new Response(script, {
+      return new Response(vampireScript, {
         status: 200,
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
-          "Cache-Control": "public, max-age=180",
+          "Cache-Control": "no-cache",
         },
       });
     }
