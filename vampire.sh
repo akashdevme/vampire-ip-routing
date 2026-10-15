@@ -1,443 +1,728 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # ==============================================================================
-#  _   _                 _           _   _           _   _             
-# | | | | __ _ _ __ ___ | |__   ___ | | | | ___  ___| |_(_)_ __   __ _ 
+#  _   _                 _           _   _           _   _
+# | | | | __ _ _ __ ___ | |__   ___ | | | | ___  ___| |_(_)_ __   __ _
 # | | | |/ _` | '_ ` _ \| '_ \ / _ \| | | |/ _ \/ __| __| | '_ \ / _` |
 # \ \_/ / (_| | | | | | | |_) |  __/| |_| | (_) \__ \ |_| | | | | (_| |
 #  \___/ \__,_|_| |_| |_|_.__/ \___| \___/ \___/|___/\__|_|_| |_|\__, |
-#                                                                 |___/ 
-#  VAMPIRE HOSTING - ALL-PORTS INSTANT PUBLIC IP ROUTER
-#  Forward ALL 65,535 TCP/UDP Ports to your Private High-RAM VPS in 1 Command!
+#                                                                  |___/
+#  VAMPIRE HOSTING v2.1.0 -- 1-COMMAND 24/7 HIGH-PERFORMANCE IP ROUTER
+#  Route ANY Non-Public High-RAM VPS to Public IPv4 with Built-in AI Support
+#  GitHub: https://github.com/akashdevme/vampire-ip-routing
 # ==============================================================================
 
-set -e
+set -euo pipefail
 
 VAMPIRE_DIR="/etc/vampire"
-WG_DIR="/etc/wireguard"
 BIN_DIR="/usr/local/bin"
-WG_PORT=51820
-GATEWAY_IP="10.0.0.1"
-NODE_IP="10.0.0.2"
+FRP_VERSION="0.58.1"
+DEFAULT_BIND_PORT="20000"
+DASHBOARD_PORT="7500"
+VAMPIRE_VERSION="2.1.0"
+INSTALL_URL="https://iproute.vampirenodes.in"
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 YELLOW='\033[1;33m'
 PURPLE='\033[0;35m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
 
 banner() {
   echo -e "${PURPLE}${BOLD}"
-  cat << "EOF"
-  __      __                 _              _    _           _   _             
-  \ \    / /                (_)            | |  | |         | | (_)            
-   \ \  / /_ _ _ __ ___  _ __  _ _ __ ___  | |__| | ___  ___| |_ _ _ __   __ _ 
-    \ \/ / _` | '_ ` _ \| '_ \| | '__/ _ \ |  __  |/ _ \/ __| __| | '_ \ / _` |
-     \  / (_| | | | | | | |_) | | | |  __/ | |  | | (_) \__ \ |_| | | | | (_| |
-      \/ \__,_|_| |_| |_| .__/|_|_|  \___| |_|  |_|\___/|___/\__|_|_| |_|\__, |
-                        | |                                                __/ |
-                        |_|   ALL-PORTS INSTANT PUBLIC IP ROUTER          |___/ 
-EOF
-  echo -e "${CYAN}  Route ALL 65,535 Ports from Public IPv4 to your Private High-RAM VPS!${NC}"
+  cat << "BANNER"
+  __   __                    _              _    _           _   _
+  \ \ / /_ _ _ __ ___  _ __(_)_ __   ___  | |__| | ___  ___| |_(_)_ __   __ _
+   \ V / _` | '_ ` _ \| '_ \ | '__/ _ \ | '_ \| |/ _ \/ __| __| | '_ \ / _` |
+    | | (_| | | | | | | |_) | | | |  __/ | | | | | (_) \__ \ |_| | | | | (_| |
+    |_|\__,_|_| |_| |_| .__/|_|_|  \___| |_| |_|_|\___/|___/\__|_|_| |_|\__, |
+                       |_|   24/7 PUBLIC IPv4 ROUTER v2.1                 |___/
+BANNER
+  echo -e "${CYAN}  Bat High-RAM Private VPS to Public IPv4 in 1 command  |  Gemini AI built-in${NC}"
   echo -e "================================================================================\n"
 }
+
+log_info()  { echo -e "${GREEN}[OK]${NC} $*"; }
+log_warn()  { echo -e "${YELLOW}[!!]${NC} $*"; }
+log_error() { echo -e "${RED}[XX]${NC} $*" >&2; }
+log_step()  { echo -e "${CYAN}[->]${NC} $*"; }
 
 check_root() {
   if [ "$EUID" -ne 0 ]; then
-    echo -e "${RED}[ERROR] Please run as root:${NC} sudo bash $0 $@"
+    log_error "Please run as root: sudo vampire $*"
     exit 1
   fi
 }
 
-detect_public_interface() {
-  local iface
-  iface=$(ip route show default 2>/dev/null | awk '{print $5}' | head -n1)
-  if [ -z "$iface" ]; then
-    iface=$(ip link show | grep -v 'lo:' | grep 'state UP' | awk -F': ' '{print $2}' | head -n1)
-  fi
-  echo "${iface:-eth0}"
+detect_arch() {
+  case "$(uname -m)" in
+    x86_64)        echo "amd64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    armv7l)        echo "arm"   ;;
+    *)             echo "amd64" ;;
+  esac
 }
 
 detect_public_ip() {
-  local ip
-  ip=$(curl -s4 --connect-timeout 3 https://api.ipify.org 2>/dev/null || \
-       curl -s4 --connect-timeout 3 https://icanhazip.com 2>/dev/null || \
-       curl -s4 --connect-timeout 3 https://ip.sb 2>/dev/null || \
-       ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || true)
-  echo "${ip:-127.0.0.1}"
+  curl -s4 --connect-timeout 4 https://api.ipify.org 2>/dev/null || \
+  curl -s4 --connect-timeout 4 https://icanhazip.com  2>/dev/null || \
+  curl -s4 --connect-timeout 4 https://ip.sb           2>/dev/null || \
+  ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K\S+' || \
+  echo "127.0.0.1"
 }
 
-detect_ssh_port() {
-  local port
-  port=$(ss -tlpn 2>/dev/null | grep -E 'sshd|ssh' | awk '{print $4}' | awk -F':' '{print $NF}' | head -n1 || true)
-  if [ -z "$port" ] && [ -f /etc/ssh/sshd_config ]; then
-    port=$(grep -E '^Port ' /etc/ssh/sshd_config 2>/dev/null | awk '{print $2}' | head -n1 || true)
-  fi
-  echo "${port:-22}"
-}
-
-install_packages() {
-  echo -e "${CYAN}[+] Installing WireGuard and routing tools...${NC}"
+install_dependencies() {
+  mkdir -p "$BIN_DIR" "$VAMPIRE_DIR"
+  log_step "Installing system dependencies..."
   if command -v apt-get >/dev/null 2>&1; then
-    DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq wireguard iptables iptables-persistent curl wget net-tools >/dev/null 2>&1
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
+      curl wget tar openssl python3 jq net-tools >/dev/null 2>&1 || true
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y epel-release >/dev/null 2>&1 || true
-    yum install -y wireguard-tools iptables curl wget >/dev/null 2>&1
-  elif command -v pacman >/dev/null 2>&1; then
-    pacman -Sy --noconfirm wireguard-tools iptables curl wget >/dev/null 2>&1
+    yum install -y -q curl wget tar openssl python3 jq net-tools >/dev/null 2>&1 || true
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --quiet curl wget tar openssl python3 jq net-tools >/dev/null 2>&1 || true
   fi
 }
 
-enable_ip_forwarding() {
-  echo -e "${CYAN}[+] Enabling kernel IPv4 forwarding...${NC}"
-  sed -i '/net.ipv4.ip_forward/d' /etc/sysctl.conf 2>/dev/null || true
-  echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-  sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1
+download_frp() {
+  local mode="$1"
+  if [ -f "$BIN_DIR/$mode" ]; then
+    log_info "Core engine ${mode} already installed."
+    return 0
+  fi
+  log_step "Downloading Vampire Core Engine (${mode} v${FRP_VERSION})..."
+  local arch; arch=$(detect_arch)
+  local tmp_dir; tmp_dir=$(mktemp -d)
+  local url="https://github.com/fatedier/frp/releases/download/v${FRP_VERSION}/frp_${FRP_VERSION}_linux_${arch}.tar.gz"
+
+  wget -qO "$tmp_dir/frp.tar.gz" "$url" 2>/dev/null || \
+  curl -sSL "$url" -o "$tmp_dir/frp.tar.gz" || {
+    log_error "Failed to download ${mode}. Check your internet connection."
+    rm -rf "$tmp_dir"; exit 1
+  }
+
+  tar -zxf "$tmp_dir/frp.tar.gz" -C "$tmp_dir"
+  cp "$tmp_dir/frp_${FRP_VERSION}_linux_${arch}/$mode" "$BIN_DIR/"
+  chmod +x "$BIN_DIR/$mode"
+  rm -rf "$tmp_dir"
+  log_info "Installed $mode to $BIN_DIR/$mode"
+}
+
+install_vampire_cmd() {
+  if [ ! -f "$BIN_DIR/vampire" ]; then
+    log_step "Installing vampire shortcut command..."
+    curl -sSL "$INSTALL_URL" -o "$BIN_DIR/vampire" 2>/dev/null || \
+      cp "$0" "$BIN_DIR/vampire" 2>/dev/null || true
+    chmod +x "$BIN_DIR/vampire" 2>/dev/null || true
+  fi
 }
 
 # ==============================================================================
-# GATEWAY SETUP (Public IPv4 VPS)
+# WATCHDOG
 # ==============================================================================
-setup_gateway() {
-  local custom_domain=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --domain) custom_domain="$2"; shift 2 ;;
-      *) shift ;;
-    esac
+setup_watchdog() {
+  log_step "Installing Vampire auto-heal watchdog..."
+  mkdir -p "$VAMPIRE_DIR"
+
+  cat > "$VAMPIRE_DIR/watchdog.sh" << 'WATCHDOG'
+#!/bin/bash
+VAMPIRE_DIR="/etc/vampire"
+LOG_FILE="$VAMPIRE_DIR/watchdog.log"
+
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
+
+rotate_log() {
+  if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 1000 ]; then
+    tail -n 500 "$LOG_FILE" > "${LOG_FILE}.tmp" && mv "${LOG_FILE}.tmp" "$LOG_FILE"
+  fi
+}
+
+while true; do
+  rotate_log
+  for svc in vampire-gateway vampire-node; do
+    if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+      if ! systemctl is-active --quiet "$svc"; then
+        log "ALERT: $svc is DOWN. Restarting..."
+        systemctl restart "$svc" && log "RECOVERED: $svc restarted OK." || log "FAILED: could not restart $svc"
+      fi
+    fi
   done
+  sleep 30
+done
+WATCHDOG
 
-  banner
-  echo -e "${BOLD}${GREEN}=== SETTING UP VAMPIRE PUBLIC GATEWAY ===${NC}"
-  echo -e "${YELLOW}All incoming traffic (except SSH & WireGuard) will route to your Private VPS.${NC}\n"
+  chmod +x "$VAMPIRE_DIR/watchdog.sh"
 
-  install_packages
-  enable_ip_forwarding
-
-  PUBLIC_IFACE=$(detect_public_interface)
-  PUBLIC_IP=$(detect_public_ip)
-  SSH_PORT=$(detect_ssh_port)
-  CONNECT_HOST="$PUBLIC_IP"
-
-  echo -e "${GREEN}[+] Public Interface:${NC} ${BOLD}$PUBLIC_IFACE${NC}"
-  echo -e "${GREEN}[+] Public IPv4:${NC}      ${BOLD}$PUBLIC_IP${NC}"
-  echo -e "${GREEN}[+] Detected SSH Port:${NC} ${BOLD}$SSH_PORT (Protected - will not be forwarded)${NC}"
-
-  mkdir -p "$WG_DIR" "$VAMPIRE_DIR"
-  chmod 700 "$WG_DIR"
-  cd "$WG_DIR"
-
-  # Generate server keys
-  wg genkey | tee server_private.key | wg pubkey > server_public.key
-  SERVER_PRIV=$(cat server_private.key)
-  SERVER_PUB=$(cat server_public.key)
-
-  # Pre-generate client keys right now so client needs ZERO manual steps!
-  wg genkey | tee client_private.key | wg pubkey > client_public.key
-  CLIENT_PRIV=$(cat client_private.key)
-  CLIENT_PUB=$(cat client_public.key)
-
-  # Configure wg0.conf on Gateway
-  # NAT RULES:
-  # 1. Protect SSH port on the public VPS (so you NEVER get locked out!)
-  # 2. Protect WireGuard port (51820)
-  # 3. Forward ALL other TCP and UDP ports (1-65535) directly to 10.0.0.2!
-  cat <<EOF > "$WG_DIR/wg0.conf"
-[Interface]
-Address = $GATEWAY_IP/24
-ListenPort = $WG_PORT
-PrivateKey = $SERVER_PRIV
-
-# Firewall & All-Ports Forwarding Rules
-PostUp = iptables -A FORWARD -i $PUBLIC_IFACE -o wg0 -d $NODE_IP -j ACCEPT
-PostUp = iptables -A FORWARD -i wg0 -o $PUBLIC_IFACE -j ACCEPT
-PostUp = iptables -t nat -A PREROUTING -i $PUBLIC_IFACE -p tcp --dport $SSH_PORT -j ACCEPT
-PostUp = iptables -t nat -A PREROUTING -i $PUBLIC_IFACE -p udp --dport $WG_PORT -j ACCEPT
-PostUp = iptables -t nat -A PREROUTING -i $PUBLIC_IFACE -p tcp -j DNAT --to-destination $NODE_IP
-PostUp = iptables -t nat -A PREROUTING -i $PUBLIC_IFACE -p udp -j DNAT --to-destination $NODE_IP
-PostUp = iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE
-PostUp = iptables -t nat -A POSTROUTING -o $PUBLIC_IFACE -j MASQUERADE
-
-PostDown = iptables -D FORWARD -i $PUBLIC_IFACE -o wg0 -d $NODE_IP -j ACCEPT
-PostDown = iptables -D FORWARD -i wg0 -o $PUBLIC_IFACE -j ACCEPT
-PostDown = iptables -t nat -D PREROUTING -i $PUBLIC_IFACE -p tcp --dport $SSH_PORT -j ACCEPT
-PostDown = iptables -t nat -D PREROUTING -i $PUBLIC_IFACE -p udp --dport $WG_PORT -j ACCEPT
-PostDown = iptables -t nat -D PREROUTING -i $PUBLIC_IFACE -p tcp -j DNAT --to-destination $NODE_IP
-PostDown = iptables -t nat -D PREROUTING -i $PUBLIC_IFACE -p udp -j DNAT --to-destination $NODE_IP
-PostDown = iptables -t nat -D POSTROUTING -o wg0 -j MASQUERADE
-PostDown = iptables -t nat -D POSTROUTING -o $PUBLIC_IFACE -j MASQUERADE
-
-[Peer]
-PublicKey = $CLIENT_PUB
-AllowedIPs = $NODE_IP/32
-EOF
-
-  chmod 600 "$WG_DIR/wg0.conf"
-
-  systemctl stop wg-quick@wg0 2>/dev/null || true
-  systemctl enable --now wg-quick@wg0
-  systemctl restart wg-quick@wg0
-
-  # Install vampire command helper
-  cp "$0" "$BIN_DIR/vampire" 2>/dev/null || true
-  chmod +x "$BIN_DIR/vampire" 2>/dev/null || true
-
-  echo -e "\n${GREEN}${BOLD}✓ VAMPIRE GATEWAY IS RUNNING AND READY!${NC}\n"
-  echo -e "${CYAN}================================================================================${NC}"
-  echo -e "${BOLD}${YELLOW}COPY & PASTE THIS EXACT 1-COMMAND ON YOUR PRIVATE HIGH-RAM VPS:${NC}\n"
-  echo -e "${GREEN}${BOLD}curl -sSL https://iproute.vampirenodes.in | sudo bash -s -- node --server $CONNECT_HOST --server-key \"$SERVER_PUB\" --client-key \"$CLIENT_PRIV\"${NC}"
-  echo -e "\n${CYAN}(Or if vampire.sh is already on your private VPS, run:)${NC}"
-  echo -e "${GREEN}${BOLD}sudo bash vampire.sh node --server $CONNECT_HOST --server-key \"$SERVER_PUB\" --client-key \"$CLIENT_PRIV\"${NC}"
-  echo -e "${CYAN}================================================================================${NC}"
-  echo -e "\n${BOLD}Routing Details:${NC}"
-  echo -e "  • Gateway Host:    ${GREEN}$CONNECT_HOST${NC} ($PUBLIC_IP)"
-  echo -e "  • Protected SSH:   ${YELLOW}Port $SSH_PORT${NC} (Remains accessible on Public VPS)"
-  echo -e "  • Forwarded Ports: ${GREEN}ALL OTHER PORTS (1 - 65535, TCP & UDP)${NC} -> Private VPS"
-  echo -e "================================================================================\n"
-}
-
-# ==============================================================================
-# NODE SETUP (Private / Non-Public High-RAM VPS)
-# ==============================================================================
-setup_node() {
-  local server_ip=""
-  local server_key=""
-  local client_key=""
-
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --server) server_ip="$2"; shift 2 ;;
-      --server-key) server_key="$2"; shift 2 ;;
-      --client-key) client_key="$2"; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-
-  banner
-  echo -e "${BOLD}${GREEN}=== CONNECTING VAMPIRE PRIVATE NODE ===${NC}"
-  echo -e "${YELLOW}Linking this high-RAM machine to Public IPv4 ($server_ip)...${NC}\n"
-
-  if [ -z "$server_ip" ] || [ -z "$server_key" ] || [ -z "$client_key" ]; then
-    echo -e "${RED}[ERROR] Missing arguments!${NC}"
-    echo "Usage: sudo bash vampire.sh node --server <PUBLIC_IP> --server-key <KEY> --client-key <KEY>"
-    exit 1
-  fi
-
-  install_packages
-  mkdir -p "$WG_DIR" "$VAMPIRE_DIR"
-  chmod 700 "$WG_DIR"
-
-  cat <<EOF > "$WG_DIR/wg0.conf"
-[Interface]
-Address = $NODE_IP/24
-PrivateKey = $client_key
-
-[Peer]
-PublicKey = $server_key
-Endpoint = $server_ip:$WG_PORT
-AllowedIPs = $GATEWAY_IP/32
-PersistentKeepalive = 25
-EOF
-
-  chmod 600 "$WG_DIR/wg0.conf"
-
-  systemctl stop wg-quick@wg0 2>/dev/null || true
-  systemctl enable --now wg-quick@wg0
-  systemctl restart wg-quick@wg0
-
-  # Install vampire command helper
-  cp "$0" "$BIN_DIR/vampire" 2>/dev/null || true
-  chmod +x "$BIN_DIR/vampire" 2>/dev/null || true
-
-  echo -e "\n${CYAN}[+] Testing tunnel link to Gateway ($GATEWAY_IP)...${NC}"
-  sleep 2
-  if ping -c 3 -W 2 "$GATEWAY_IP" >/dev/null 2>&1; then
-    echo -e "${GREEN}${BOLD}✓ LINK ESTABLISHED! PING SUCCESSFUL!${NC}\n"
-    echo -e "${CYAN}================================================================================${NC}"
-    echo -e "${BOLD}${GREEN}CONGRATULATIONS! ALL 65,535 PORTS ARE NOW ROUTED!${NC}"
-    echo -e "${CYAN}================================================================================${NC}"
-    echo -e "Every service you run on this private high-RAM VPS is now immediately accessible"
-    echo -e "on your Public IPv4: ${BOLD}${GREEN}$server_ip${NC}"
-    echo -e ""
-    echo -e "Examples:"
-    echo -e "  • Web Server (Port 80/443)    → http://$server_ip / https://$server_ip"
-    echo -e "  • Minecraft (Port 25565)      → $server_ip:25565"
-    echo -e "  • Game/App Server (e.g. 7777) → $server_ip:7777"
-    echo -e "  • Panel / Docker (Port 8080)  → http://$server_ip:8080"
-    echo -e "  • Any port you open works automatically with ZERO configuration!"
-    echo -e "${CYAN}================================================================================${NC}\n"
-  else
-    echo -e "${YELLOW}[!] Tunnel started, but ping test to $GATEWAY_IP timed out.${NC}"
-    echo -e "Make sure UDP Port $WG_PORT is allowed in your Public VPS cloud firewall / security groups."
-  fi
-}
-
-# ==============================================================================
-# STATUS & UTILITIES
-# ==============================================================================
-show_status() {
-  banner
-  echo -e "${BOLD}WireGuard Interface Status:${NC}"
-  if command -v wg >/dev/null 2>&1; then
-    wg show || echo "No active WireGuard interfaces."
-  fi
-  echo -e "\n${BOLD}Systemd Service:${NC}"
-  systemctl status wg-quick@wg0 --no-pager -l | head -n 10
-}
-
-start_test_page() {
-  banner
-  echo -e "${GREEN}[+] Setting up VampireHosting IPv4 landing page on Port 80 (HTTP)...${NC}"
-  mkdir -p /var/www/vampire
-
-  cat << "EOF" > /var/www/vampire/index.html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VampireHosting — IPv4 Installed</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background-color: #09090e; color: #e5e5f0; font-family: 'Outfit', sans-serif;
-      min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      position: relative; overflow-x: hidden; padding: 24px;
-    }
-    body::before {
-      content: ""; position: absolute; top: -150px; left: 50%; transform: translateX(-50%);
-      width: 650px; height: 650px;
-      background: radial-gradient(circle, rgba(168, 85, 247, 0.28) 0%, rgba(239, 68, 68, 0.12) 45%, transparent 70%);
-      z-index: 0; pointer-events: none;
-    }
-    .card {
-      position: relative; z-index: 1; background: rgba(18, 18, 28, 0.85);
-      border: 1px solid rgba(168, 85, 247, 0.35); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-      border-radius: 28px; padding: 52px 40px; max-width: 640px; width: 100%;
-      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 40px -5px rgba(168, 85, 247, 0.25); text-align: center;
-    }
-    .badge {
-      display: inline-flex; align-items: center; gap: 10px; padding: 8px 18px;
-      background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.45);
-      color: #4ade80; font-size: 0.85rem; font-weight: 700; border-radius: 999px; margin-bottom: 24px;
-      text-transform: uppercase; letter-spacing: 0.5px;
-    }
-    .badge-dot {
-      width: 9px; height: 9px; background-color: #22c55e; border-radius: 50%;
-      box-shadow: 0 0 12px #22c55e; animation: pulse 2s infinite;
-    }
-    @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
-    .logo {
-      font-size: 3rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px;
-      background: linear-gradient(135deg, #ffffff 20%, #c084fc 70%, #f43f5e 100%);
-      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    }
-    .subtitle { font-size: 1.15rem; color: #94a3b8; margin-bottom: 32px; line-height: 1.5; }
-    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 36px; }
-    @media (max-width: 600px) { .feature-grid { grid-template-columns: 1fr; } .card { padding: 32px 20px; } }
-    .feature-box {
-      background: rgba(25, 25, 38, 0.7); border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px; padding: 18px 12px; text-align: center;
-    }
-    .feature-num { font-size: 1.45rem; font-weight: 700; color: #c084fc; margin-bottom: 4px; }
-    .feature-desc { font-size: 0.8rem; color: #94a3b8; font-weight: 500; }
-    .status-box {
-      background: #0d0d15; border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 14px;
-      padding: 16px 20px; display: flex; align-items: center; justify-content: space-between;
-      font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #e2e8f0; margin-bottom: 24px;
-    }
-    .status-val { color: #4ade80; font-weight: 600; }
-    .footer { font-size: 0.85rem; color: #64748b; }
-    .footer a { color: #c084fc; text-decoration: none; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="badge"><div class="badge-dot"></div>VampireHosting IPv4 Installed</div>
-    <h1 class="logo">VampireHosting</h1>
-    <p class="subtitle">High-RAM Private Node Successfully Connected to Public IPv4.</p>
-    <div class="feature-grid">
-      <div class="feature-box"><div class="feature-num">65,535</div><div class="feature-desc">All Ports Routed</div></div>
-      <div class="feature-box"><div class="feature-num">TCP + UDP</div><div class="feature-desc">Full Support</div></div>
-      <div class="feature-box"><div class="feature-num">&lt; 1 ms</div><div class="feature-desc">Kernel WireGuard</div></div>
-    </div>
-    <div class="status-box">
-      <div>Status: <span class="status-val">● ONLINE</span></div>
-      <div style="color: #c084fc; font-weight: 600;">Port 80 (HTTP) Active</div>
-    </div>
-    <div class="footer">Powered by <a href="https://vampirenodes.in" target="_blank">VampireNodes.in</a></div>
-  </div>
-</body>
-</html>
-EOF
-
-  cat << 'EOF' > /etc/systemd/system/vampire-web.service
+  cat > /etc/systemd/system/vampire-watchdog.service << EOF
 [Unit]
-Description=VampireHosting Test Web Landing Page
-After=network.target
+Description=Vampire Hosting -- Auto Self-Heal Watchdog
+After=vampire-gateway.service vampire-node.service
 
 [Service]
 Type=simple
-WorkingDirectory=/var/www/vampire
-ExecStart=/usr/bin/python3 -m http.server 80
+User=root
+ExecStart=/bin/bash $VAMPIRE_DIR/watchdog.sh
 Restart=always
+RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable --now vampire-web >/dev/null 2>&1
-  systemctl restart vampire-web
-
-  echo -e "\n${GREEN}${BOLD}✓ VampireHosting landing page is LIVE on Port 80!${NC}"
-  echo -e "Open ${CYAN}http://YOUR_PUBLIC_IP${NC} in any web browser to see it in action!\n"
+  systemctl enable --now vampire-watchdog >/dev/null 2>&1
+  log_info "Watchdog installed -- auto self-healing every 30 seconds!"
 }
 
+# ==============================================================================
+# GATEWAY SETUP
+# ==============================================================================
+setup_gateway() {
+  banner
+  echo -e "${BOLD}${GREEN}=== SETTING UP VAMPIRE PUBLIC GATEWAY (24/7) ===${NC}"
+  echo -e "${YELLOW}  All TCP/UDP traffic will route to your private high-RAM node.${NC}\n"
+
+  install_dependencies
+  download_frp "frps"
+  install_vampire_cmd
+
+  PUBLIC_IP=$(detect_public_ip)
+  log_info "Detected Public IP: ${BOLD}$PUBLIC_IP${NC}"
+
+  if [ -f "$VAMPIRE_DIR/frps.toml" ] && grep -q "auth.token" "$VAMPIRE_DIR/frps.toml"; then
+    TOKEN=$(grep 'auth.token' "$VAMPIRE_DIR/frps.toml" | head -n1 | sed 's/.*= *"\(.*\)"/\1/')
+    log_info "Reusing existing secure token."
+  else
+    TOKEN=$(openssl rand -hex 16)
+    log_info "Generated new secure token."
+  fi
+
+  mkdir -p "$VAMPIRE_DIR"
+  cat > "$VAMPIRE_DIR/frps.toml" << TOMLEOF
+# Vampire Hosting Gateway Configuration
+bindPort = $DEFAULT_BIND_PORT
+auth.token = "$TOKEN"
+
+webServer.addr = "0.0.0.0"
+webServer.port = $DASHBOARD_PORT
+webServer.user = "vampire"
+webServer.password = "vampire123"
+TOMLEOF
+
+  cat > /etc/systemd/system/vampire-gateway.service << SVCEOF
+[Unit]
+Description=Vampire Hosting -- Public Gateway 24/7
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=$BIN_DIR/frps -c $VAMPIRE_DIR/frps.toml
+Restart=always
+RestartSec=3s
+StartLimitInterval=0
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+  systemctl daemon-reload
+  systemctl enable --now vampire-gateway >/dev/null 2>&1
+  sleep 1
+  systemctl restart vampire-gateway
+
+  cat > "$VAMPIRE_DIR/gateway.env" << ENVEOF
+PUBLIC_IP=$PUBLIC_IP
+TOKEN=$TOKEN
+BIND_PORT=$DEFAULT_BIND_PORT
+DASHBOARD_PORT=$DASHBOARD_PORT
+SETUP_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+ENVEOF
+
+  echo ""
+  echo -e "${GREEN}${BOLD}[OK] VAMPIRE GATEWAY IS LIVE AND ACTIVE (24/7)!${NC}"
+  echo -e "${CYAN}================================================================================${NC}"
+  echo -e "${BOLD}${YELLOW}  RUN THIS 1-COMMAND ON YOUR PRIVATE HIGH-RAM VPS:${NC}"
+  echo ""
+  echo -e "  ${GREEN}${BOLD}curl -sSL $INSTALL_URL | sudo bash -s -- node --server $PUBLIC_IP --token $TOKEN${NC}"
+  echo ""
+  echo -e "  Public IP:     ${GREEN}${BOLD}$PUBLIC_IP${NC}"
+  echo -e "  Control Port:  ${GREEN}$DEFAULT_BIND_PORT/TCP${NC}"
+  echo -e "  Secret Token:  ${GREEN}$TOKEN${NC}"
+  echo -e "  Dashboard:     ${CYAN}http://$PUBLIC_IP:$DASHBOARD_PORT${NC}  (vampire / vampire123)"
+  echo -e "${CYAN}================================================================================${NC}\n"
+}
+
+# ==============================================================================
+# NODE SETUP
+# ==============================================================================
+setup_node() {
+  local server_ip="" token="" ports="80,443,25565"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --server|-s) server_ip="$2"; shift 2 ;;
+      --token|-t)  token="$2";     shift 2 ;;
+      --ports|-p)  ports="$2";     shift 2 ;;
+      *) shift ;;
+    esac
+  done
+
+  banner
+  echo -e "${BOLD}${GREEN}=== SETTING UP VAMPIRE NODE (HOSTING WORKER) ===${NC}"
+  echo -e "${YELLOW}  Connecting this High-RAM VPS to Public IPv4 Gateway via TCP...${NC}\n"
+
+  if [ -z "$server_ip" ] || [ -z "$token" ]; then
+    log_error "Server IP and Token are required!"
+    echo "  Usage: sudo bash vampire.sh node --server <PUBLIC_IP> --token <TOKEN>"
+    exit 1
+  fi
+
+  install_dependencies
+  download_frp "frpc"
+  install_vampire_cmd
+
+  log_step "Configuring TCP tunnel to $server_ip:$DEFAULT_BIND_PORT ..."
+
+  mkdir -p "$VAMPIRE_DIR"
+  cat > "$VAMPIRE_DIR/frpc.toml" << TOMLEOF
+# Vampire Node Client Configuration
+serverAddr = "$server_ip"
+serverPort = $DEFAULT_BIND_PORT
+auth.token = "$token"
+
+transport.heartbeatInterval = 10
+transport.heartbeatTimeout = 30
+
+[[proxies]]
+name = "web-http"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 80
+remotePort = 80
+
+[[proxies]]
+name = "web-https"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 443
+remotePort = 443
+
+[[proxies]]
+name = "game-minecraft"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 25565
+remotePort = 25565
+TOMLEOF
+
+  cat > /etc/systemd/system/vampire-node.service << SVCEOF
+[Unit]
+Description=Vampire Hosting -- Private Node 24/7
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=$BIN_DIR/frpc -c $VAMPIRE_DIR/frpc.toml
+Restart=always
+RestartSec=3s
+StartLimitInterval=0
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+  systemctl daemon-reload
+  systemctl enable --now vampire-node >/dev/null 2>&1
+  sleep 1
+  systemctl restart vampire-node
+
+  cat > "$VAMPIRE_DIR/node.env" << ENVEOF
+GATEWAY_IP=$server_ip
+TOKEN=$token
+BIND_PORT=$DEFAULT_BIND_PORT
+SETUP_DATE=$(date -u +"%Y-%m-%d %H:%M UTC")
+ENVEOF
+
+  start_test_page_silent
+  sleep 2
+
+  if systemctl is-active --quiet vampire-node; then
+    echo ""
+    echo -e "${GREEN}${BOLD}[OK] VAMPIRE NODE CONNECTED SUCCESSFULLY (24/7)!${NC}"
+    echo -e "${CYAN}================================================================================${NC}"
+    echo -e "  ${BOLD}Your Private High-RAM VPS is now LIVE on:${NC} ${GREEN}$server_ip${NC}"
+    echo ""
+    echo -e "  Active Default Routes:"
+    echo -e "    HTTP  Port 80   -> ${GREEN}http://$server_ip${NC}"
+    echo -e "    HTTPS Port 443  -> ${GREEN}https://$server_ip${NC}"
+    echo -e "    Game  Port 25565-> ${GREEN}$server_ip:25565${NC}"
+    echo ""
+    echo -e "  Add more ports: ${YELLOW}sudo vampire add 7777${NC}"
+    echo -e "  AI Support:     ${YELLOW}sudo vampire ai${NC}"
+    echo -e "${CYAN}================================================================================${NC}\n"
+  else
+    log_error "Could not verify node. Check: journalctl -u vampire-node -n 30"
+  fi
+}
+
+# ==============================================================================
+# ADD PORT
+# ==============================================================================
+add_port() {
+  local port="${1:-}" proto="${2:-both}"
+
+  if [ -z "$port" ]; then
+    echo -e "${RED}Usage: sudo vampire add <port> [tcp|udp|both]${NC}"
+    echo "  Examples:"
+    echo "    sudo vampire add 7777"
+    echo "    sudo vampire add 30120 tcp"
+    echo "    sudo vampire add 8211  udp"
+    exit 1
+  fi
+
+  [ -f "$VAMPIRE_DIR/frpc.toml" ] || { log_error "Vampire Node not installed."; exit 1; }
+
+  if grep -q "\"port-${port}-tcp\"\|\"port-${port}-udp\"" "$VAMPIRE_DIR/frpc.toml" 2>/dev/null; then
+    log_warn "Port $port already configured. Restarting..."
+    systemctl restart vampire-node
+    log_info "Port $port active."; return 0
+  fi
+
+  log_step "Forwarding port $port ($proto)..."
+
+  if [ "$proto" = "tcp" ] || [ "$proto" = "both" ]; then
+    cat >> "$VAMPIRE_DIR/frpc.toml" << PORTEOF
+
+# Added: $(date -u +"%Y-%m-%d %H:%M UTC")
+[[proxies]]
+name = "port-${port}-tcp"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = $port
+remotePort = $port
+PORTEOF
+  fi
+
+  if [ "$proto" = "udp" ] || [ "$proto" = "both" ]; then
+    cat >> "$VAMPIRE_DIR/frpc.toml" << PORTEOF
+
+[[proxies]]
+name = "port-${port}-udp"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = $port
+remotePort = $port
+PORTEOF
+  fi
+
+  systemctl restart vampire-node
+  log_info "Port ${BOLD}$port ($proto)${NC} is now live 24/7!"
+}
+
+# ==============================================================================
+# REMOVE PORT
+# ==============================================================================
+remove_port() {
+  local port="${1:-}"
+  [ -n "$port" ] || { echo -e "${RED}Usage: sudo vampire remove <port>${NC}"; exit 1; }
+  [ -f "$VAMPIRE_DIR/frpc.toml" ] || { log_error "Vampire Node not installed."; exit 1; }
+
+  python3 - "$VAMPIRE_DIR/frpc.toml" "$port" << 'PYEOF'
+import sys, re
+f = sys.argv[1]; p = sys.argv[2]
+txt = open(f).read()
+txt = re.sub(r'\n*# Added:.*\n(\[\[proxies\]\]\nname = "port-' + re.escape(p) + r'-(?:tcp|udp)".*?)(?=\n\[|\Z)', '', txt, flags=re.DOTALL)
+txt = re.sub(r'\n*\[\[proxies\]\]\nname = "port-' + re.escape(p) + r'-(?:tcp|udp)".*?(?=\n\[|\Z)', '', txt, flags=re.DOTALL)
+open(f,'w').write(txt.strip()+'\n')
+print(f"Removed port {p} from config.")
+PYEOF
+
+  systemctl restart vampire-node
+  log_info "Port $port removed and service restarted."
+}
+
+# ==============================================================================
+# STATUS
+# ==============================================================================
+show_status() {
+  banner
+  echo -e "${BOLD}=== Vampire System Health =======================================================${NC}\n"
+
+  local is_gw=false is_node=false
+
+  if systemctl is-active --quiet vampire-gateway 2>/dev/null; then
+    is_gw=true
+    echo -e "  ${GREEN}[RUNNING]${NC} ${BOLD}Vampire Gateway${NC}  (Public IPv4 Master)"
+    [ -f "$VAMPIRE_DIR/gateway.env" ] && { source "$VAMPIRE_DIR/gateway.env" 2>/dev/null || true
+      echo -e "    Public IP:  ${CYAN}${PUBLIC_IP:-?}${NC}"
+      echo -e "    Dashboard:  ${CYAN}http://${PUBLIC_IP:-?}:${DASHBOARD_PORT:-7500}${NC}"
+    }
+    echo ""
+  else
+    echo -e "  [STOPPED] Vampire Gateway"
+  fi
+
+  if systemctl is-active --quiet vampire-node 2>/dev/null; then
+    is_node=true
+    echo -e "  ${GREEN}[RUNNING]${NC} ${BOLD}Vampire Node${NC}  (Private High-RAM Worker)"
+    [ -f "$VAMPIRE_DIR/node.env" ] && { source "$VAMPIRE_DIR/node.env" 2>/dev/null || true
+      echo -e "    Gateway IP: ${CYAN}${GATEWAY_IP:-?}${NC}"
+    }
+    echo ""
+    if [ -f "$VAMPIRE_DIR/frpc.toml" ]; then
+      echo -e "  ${BOLD}Active Routes:${NC}"
+      grep -E '^name = |^remotePort = ' "$VAMPIRE_DIR/frpc.toml" 2>/dev/null | \
+        paste - - | awk '{gsub(/"/, ""); print "    * " $3 "  ->  Port " $6}' || true
+      echo ""
+    fi
+  else
+    echo -e "  [STOPPED] Vampire Node"
+  fi
+
+  systemctl is-active --quiet vampire-watchdog 2>/dev/null && \
+    echo -e "  ${GREEN}[RUNNING]${NC} Vampire Watchdog (Auto Self-Heal)" || true
+  systemctl is-active --quiet vampire-web 2>/dev/null && \
+    echo -e "  ${GREEN}[RUNNING]${NC} Vampire Web (Landing Page Port 80)" || true
+
+  echo ""
+  if ! $is_gw && ! $is_node; then
+    echo -e "  ${YELLOW}No active Vampire service.${NC}"
+    echo -e "    Gateway:  sudo vampire gateway"
+    echo -e "    Node:     sudo vampire node --server <IP> --token <TOKEN>"
+  fi
+  echo -e "${BOLD}================================================================================${NC}\n"
+}
+
+# ==============================================================================
+# LOGS
+# ==============================================================================
+show_logs() {
+  local svc="${1:-}"
+  if systemctl is-active --quiet vampire-gateway 2>/dev/null && [ -z "$svc" -o "$svc" = "gateway" ]; then
+    echo -e "${CYAN}${BOLD}=== Vampire Gateway Logs ===${NC}"
+    journalctl -u vampire-gateway -n 60 --no-pager
+  elif systemctl is-active --quiet vampire-node 2>/dev/null && [ -z "$svc" -o "$svc" = "node" ]; then
+    echo -e "${CYAN}${BOLD}=== Vampire Node Logs ===${NC}"
+    journalctl -u vampire-node -n 60 --no-pager
+  else
+    log_warn "No active service. Try: journalctl -u vampire-node -n 50 --no-pager"
+  fi
+}
+
+# ==============================================================================
+# UPDATE
+# ==============================================================================
+do_update() {
+  banner
+  log_step "Checking for Vampire updates..."
+  local new_ver
+  new_ver=$(curl -sSL "$INSTALL_URL" 2>/dev/null | grep 'VAMPIRE_VERSION=' | head -1 | cut -d'"' -f2 || echo "unknown")
+  if [ "$new_ver" = "$VAMPIRE_VERSION" ]; then
+    log_info "Vampire v$VAMPIRE_VERSION is already up to date!"
+  else
+    log_step "Updating Vampire: v$VAMPIRE_VERSION -> v$new_ver"
+    curl -sSL "$INSTALL_URL" -o "$BIN_DIR/vampire" 2>/dev/null
+    chmod +x "$BIN_DIR/vampire"
+    log_info "Updated to v$new_ver"
+  fi
+}
+
+# ==============================================================================
+# LANDING PAGE (Port 80)
+# ==============================================================================
+start_test_page_silent() {
+  mkdir -p /var/www/vampire
+  if ! curl -sSL --connect-timeout 5 \
+    "https://raw.githubusercontent.com/akashdevme/vampire-ip-routing/main/index.html" \
+    -o /var/www/vampire/index.html 2>/dev/null; then
+    cat > /var/www/vampire/index.html << 'FBHTML'
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>VampireHosting Active</title>
+<style>body{background:#09090e;color:#e5e5f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.c{background:rgba(18,18,28,.85);border:1px solid rgba(168,85,247,.35);border-radius:24px;padding:40px;text-align:center;max-width:500px}
+h1{background:linear-gradient(135deg,#fff 30%,#c084fc 70%,#f43f5e 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;font-size:2.5rem}
+.b{display:inline-flex;align-items:center;gap:8px;background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:#4ade80;padding:6px 16px;border-radius:999px;margin-bottom:20px;font-size:.85rem;font-weight:700}
+.d{width:8px;height:8px;background:#22c55e;border-radius:50%;box-shadow:0 0 10px #22c55e;animation:p 2s infinite}
+@keyframes p{50%{opacity:.4}}p{color:#94a3b8;margin-top:12px}</style></head>
+<body><div class="c"><div class="b"><div class="d"></div>Tunnel Active 24/7</div>
+<h1>VampireHosting</h1><p>Your High-RAM Private VPS is now accessible on this Public IPv4.</p>
+<p style="color:#c084fc;margin-top:16px;font-size:.9rem">Powered by vampirenodes.in</p></div></body></html>
+FBHTML
+  fi
+
+  cat > /etc/systemd/system/vampire-web.service << SVCEOF
+[Unit]
+Description=Vampire Hosting -- Landing Page Port 80
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/vampire
+ExecStart=/usr/bin/python3 -m http.server 80
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+  systemctl daemon-reload
+  systemctl enable --now vampire-web >/dev/null 2>&1
+  systemctl restart vampire-web >/dev/null 2>&1 || true
+}
+
+start_test_page() {
+  banner
+  log_step "Starting landing page on Port 80..."
+  start_test_page_silent
+  log_info "Landing page LIVE 24/7! Open: http://$(detect_public_ip)"
+}
+
+# ==============================================================================
+# GEMINI AI ASSISTANT
+# ==============================================================================
+GEMINI_SYSTEM_PROMPT="You are Vampire AI, the official technical support bot for VampireHosting (vampirenodes.in). VampireHosting uses FRP (fast reverse proxy) to route cheap, high-RAM private VPSs (NAT VPS, LXC containers, IPv6-only VPS) through a public IPv4 gateway using persistent TCP tunnels for 24/7 uptime. The key commands are: 'sudo vampire gateway' (on public VPS), 'sudo vampire node --server <IP> --token <TOKEN>' (on private VPS), 'sudo vampire add <port>' (forward extra ports), 'sudo vampire ai' (this assistant), 'sudo vampire status' (health check), 'sudo vampire logs' (view logs). Provide concise, accurate, copy-paste-ready Linux bash commands for: server setup, port forwarding, firewall (ufw/iptables), game server hosting (Minecraft 25565, FiveM 30120, Palworld 8211, Rust 28015, Pterodactyl wings), nginx reverse proxy, SSL/TLS (certbot), and debugging tunnels."
+
+call_gemini() {
+  local api_key="$1" query="$2"
+  echo -e "\n  ${PURPLE}${DIM}Vampire AI is thinking...${NC}"
+
+  local payload
+  payload=$(jq -n \
+    --arg sys "$GEMINI_SYSTEM_PROMPT" \
+    --arg q   "$query" \
+    '{ system_instruction:{parts:[{text:$sys}]},
+       contents:[{role:"user",parts:[{text:$q}]}],
+       generationConfig:{temperature:0.3,maxOutputTokens:1024} }')
+
+  local response answer
+  response=$(curl -s --connect-timeout 15 -X POST \
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${api_key}" \
+    -H "Content-Type: application/json" \
+    -d "$payload" 2>/dev/null)
+
+  answer=$(echo "$response" | jq -r '.candidates[0].content.parts[0].text // empty' 2>/dev/null)
+
+  if [ -n "$answer" ]; then
+    echo ""
+    echo -e "${PURPLE}${BOLD}  === Vampire AI ================================================================${NC}"
+    echo "$answer" | sed 's/^/  /'
+    echo -e "${PURPLE}${BOLD}  ===============================================================================${NC}"
+  else
+    local err; err=$(echo "$response" | jq -r '.error.message // "Unknown error"' 2>/dev/null)
+    log_error "Gemini API error: $err"
+  fi
+}
+
+vampire_ai() {
+  local prompt="$*"
+
+  echo -e "\n${PURPLE}${BOLD}  Vampire AI -- Powered by Google Gemini${NC}\n"
+
+  local api_key="${GEMINI_API_KEY:-}"
+  [ -z "$api_key" ] && [ -f "$VAMPIRE_DIR/gemini.key" ] && api_key=$(cat "$VAMPIRE_DIR/gemini.key")
+
+  if [ -z "$api_key" ]; then
+    echo -e "  ${YELLOW}Gemini API Key not configured.${NC}"
+    echo -e "  Get a FREE key at: ${CYAN}https://aistudio.google.com/app/apikey${NC}\n"
+    read -rp "  Enter your Google Gemini API Key: " api_key
+    [ -z "$api_key" ] && { log_error "API Key required."; exit 1; }
+    mkdir -p "$VAMPIRE_DIR"
+    echo "$api_key" > "$VAMPIRE_DIR/gemini.key"
+    chmod 600 "$VAMPIRE_DIR/gemini.key"
+    log_info "API Key saved at $VAMPIRE_DIR/gemini.key\n"
+  fi
+
+  if [ -n "$prompt" ]; then
+    call_gemini "$api_key" "$prompt"
+    return
+  fi
+
+  echo -e "  ${DIM}Interactive mode: type your question and press Enter. Type 'exit' to quit.${NC}\n"
+  while true; do
+    echo -ne "${CYAN}  You: ${NC}"
+    IFS= read -r user_input || break
+    [[ "${user_input:-}" =~ ^(exit|quit|bye)$ ]] && {
+      echo -e "\n  ${PURPLE}Vampire AI signing off. Happy hosting!${NC}\n"; break; }
+    [ -z "${user_input:-}" ] && continue
+    call_gemini "$api_key" "$user_input"
+    echo ""
+  done
+}
+
+# ==============================================================================
+# UNINSTALL
+# ==============================================================================
 uninstall_vampire() {
   banner
-  echo -e "${RED}[+] Uninstalling Vampire IP Router...${NC}"
-  systemctl stop wg-quick@wg0 vampire-web 2>/dev/null || true
-  systemctl disable wg-quick@wg0 vampire-web 2>/dev/null || true
-  rm -f "$WG_DIR/wg0.conf" "$BIN_DIR/vampire" /etc/systemd/system/vampire-web.service
-  rm -rf /var/www/vampire
-  echo -e "${GREEN}[✓] Vampire successfully uninstalled.${NC}"
+  echo -e "${RED}${BOLD}UNINSTALLING VAMPIRE IP ROUTER${NC}"
+  read -rp "  Are you sure? (yes/no): " confirm
+  [ "$confirm" = "yes" ] || { echo "  Cancelled."; exit 0; }
+
+  systemctl stop vampire-gateway vampire-node vampire-web vampire-watchdog 2>/dev/null || true
+  systemctl disable vampire-gateway vampire-node vampire-web vampire-watchdog 2>/dev/null || true
+  rm -f /etc/systemd/system/vampire-{gateway,node,web,watchdog}.service
+  systemctl daemon-reload
+  rm -rf "$VAMPIRE_DIR" /var/www/vampire
+  rm -f "$BIN_DIR/frps" "$BIN_DIR/frpc" "$BIN_DIR/vampire"
+  log_info "Vampire completely removed."
 }
 
 # ==============================================================================
-# MAIN DISPATCHER
+# MAIN
 # ==============================================================================
-check_root
+check_root "$@"
+CMD="${1:-help}"; shift || true
 
-case "$1" in
-  gateway|server)
-    shift
-    setup_gateway "$@"
-    ;;
-  node|client)
-    shift
-    setup_node "$@"
-    ;;
-  status)
-    show_status
-    ;;
-  page|web)
-    start_test_page
-    ;;
-  uninstall)
-    uninstall_vampire
-    ;;
+case "$CMD" in
+  gateway|server)      setup_gateway "$@"; setup_watchdog ;;
+  node|client)         setup_node "$@"; setup_watchdog ;;
+  add|forward)         add_port "$@" ;;
+  remove|del)          remove_port "$@" ;;
+  page|web|landing)    start_test_page ;;
+  ai|ask|chat|support) vampire_ai "$@" ;;
+  status|health)       show_status ;;
+  logs|log)            show_logs "$@" ;;
+  update|upgrade)      do_update ;;
+  watchdog)            setup_watchdog ;;
+  uninstall)           uninstall_vampire ;;
+  version|-v)          echo "Vampire IP Router v${VAMPIRE_VERSION}" ;;
   *)
     banner
-    echo -e "${BOLD}USAGE:${NC}"
-    echo -e "  ${CYAN}sudo bash vampire.sh gateway${NC}     Run on PUBLIC IPv4 VPS to setup the Gateway"
-    echo -e "  ${CYAN}sudo bash vampire.sh node ...${NC}    Run on PRIVATE High-RAM VPS to connect"
-    echo -e "  ${CYAN}sudo vampire status${NC}              Check connection and tunnel status"
-    echo -e "  ${CYAN}sudo vampire uninstall${NC}           Remove Vampire and reset firewall"
-    echo -e "================================================================================\n"
+    echo -e "${BOLD}  USAGE${NC}"
+    echo ""
+    echo -e "  ${BOLD}Setup:${NC}"
+    echo -e "    ${CYAN}sudo vampire gateway${NC}                         On your PUBLIC VPS"
+    echo -e "    ${CYAN}sudo vampire node --server IP --token TOKEN${NC}  On your PRIVATE VPS"
+    echo ""
+    echo -e "  ${BOLD}Ports:${NC}"
+    echo -e "    ${CYAN}sudo vampire add <port> [tcp|udp|both]${NC}       Forward any port"
+    echo -e "    ${CYAN}sudo vampire remove <port>${NC}                   Stop forwarding a port"
+    echo ""
+    echo -e "  ${BOLD}Monitoring:${NC}"
+    echo -e "    ${CYAN}sudo vampire status${NC}                          Health of all services"
+    echo -e "    ${CYAN}sudo vampire logs [gateway|node]${NC}             View live logs"
+    echo -e "    ${CYAN}sudo vampire update${NC}                          Update vampire script"
+    echo ""
+    echo -e "  ${BOLD}AI & Web:${NC}"
+    echo -e "    ${CYAN}sudo vampire ai${NC}                              Interactive Gemini AI chat"
+    echo -e "    ${CYAN}sudo vampire ai \"question\"${NC}                  One-shot AI answer"
+    echo -e "    ${CYAN}sudo vampire page${NC}                            Start landing page Port 80"
+    echo ""
+    echo -e "  ${BOLD}Other:${NC}"
+    echo -e "    ${CYAN}sudo vampire uninstall${NC}                       Remove completely"
+    echo -e "    ${CYAN}sudo vampire version${NC}                         Show version"
+    echo ""
+    echo -e "  ${DIM}1-cmd install: curl -sSL https://iproute.vampirenodes.in | sudo bash -s -- gateway${NC}"
+    echo -e "${CYAN}================================================================================${NC}\n"
     ;;
 esac

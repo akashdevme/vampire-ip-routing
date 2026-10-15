@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VampireHosting — IPv4 Installed</title>
+  <title>VampireHosting — 24/7 IPv4 Routed & AI Support</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -20,32 +20,37 @@
       justify-content: center;
       position: relative;
       overflow-x: hidden;
-      padding: 24px;
+      padding: 32px 16px;
     }
     body::before {
       content: "";
       position: absolute;
-      top: -150px;
+      top: -180px;
       left: 50%;
       transform: translateX(-50%);
-      width: 650px;
-      height: 650px;
-      background: radial-gradient(circle, rgba(168, 85, 247, 0.28) 0%, rgba(239, 68, 68, 0.12) 45%, transparent 70%);
+      width: 750px;
+      height: 750px;
+      background: radial-gradient(circle, rgba(168, 85, 247, 0.25) 0%, rgba(239, 68, 68, 0.12) 45%, transparent 70%);
       z-index: 0;
       pointer-events: none;
     }
-    .card {
+    .container {
       position: relative;
       z-index: 1;
-      background: rgba(18, 18, 28, 0.8);
+      max-width: 960px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+    .card {
+      background: rgba(18, 18, 28, 0.85);
       border: 1px solid rgba(168, 85, 247, 0.35);
       backdrop-filter: blur(24px);
       -webkit-backdrop-filter: blur(24px);
       border-radius: 28px;
-      padding: 52px 44px;
-      max-width: 660px;
-      width: 100%;
-      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 40px -5px rgba(168, 85, 247, 0.25);
+      padding: 44px 36px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85), 0 0 40px -5px rgba(168, 85, 247, 0.2);
       text-align: center;
     }
     .badge {
@@ -59,7 +64,7 @@
       font-size: 0.85rem;
       font-weight: 700;
       border-radius: 999px;
-      margin-bottom: 24px;
+      margin-bottom: 20px;
       letter-spacing: 0.5px;
       text-transform: uppercase;
     }
@@ -76,7 +81,7 @@
       50% { opacity: 0.4; transform: scale(0.85); }
     }
     .logo {
-      font-size: 3rem;
+      font-size: 3.2rem;
       font-weight: 800;
       letter-spacing: -1px;
       margin-bottom: 8px;
@@ -94,18 +99,18 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 16px;
-      margin-bottom: 36px;
+      margin-bottom: 32px;
     }
-    @media (max-width: 600px) {
+    @media (max-width: 650px) {
       .feature-grid { grid-template-columns: 1fr; }
       .card { padding: 32px 20px; }
-      .logo { font-size: 2.3rem; }
+      .logo { font-size: 2.4rem; }
     }
     .feature-box {
       background: rgba(25, 25, 38, 0.7);
       border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 16px;
-      padding: 18px 12px;
+      border-radius: 18px;
+      padding: 20px 14px;
       text-align: center;
       transition: all 0.3s ease;
     }
@@ -114,41 +119,180 @@
       transform: translateY(-2px);
     }
     .feature-num {
-      font-size: 1.45rem;
+      font-size: 1.5rem;
       font-weight: 700;
       color: #c084fc;
       margin-bottom: 4px;
     }
     .feature-desc {
-      font-size: 0.8rem;
+      font-size: 0.85rem;
       color: #94a3b8;
       font-weight: 500;
     }
-    .status-box {
+    .status-bar {
       background: #0d0d15;
       border: 1px solid rgba(168, 85, 247, 0.25);
-      border-radius: 14px;
-      padding: 16px 20px;
+      border-radius: 16px;
+      padding: 16px 24px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.9rem;
       color: #e2e8f0;
-      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
     }
-    .status-left {
+    .status-online {
+      color: #4ade80;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* AI Chat Section */
+    .ai-card {
+      background: rgba(18, 18, 28, 0.85);
+      border: 1px solid rgba(168, 85, 247, 0.35);
+      backdrop-filter: blur(24px);
+      border-radius: 28px;
+      padding: 32px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.85);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .ai-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 16px;
+    }
+    .ai-title {
+      font-size: 1.35rem;
+      font-weight: 700;
       display: flex;
       align-items: center;
       gap: 10px;
+      background: linear-gradient(135deg, #ffffff, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
     }
-    .status-val {
-      color: #4ade80;
+    .ai-key-btn {
+      background: rgba(168, 85, 247, 0.2);
+      border: 1px solid rgba(168, 85, 247, 0.4);
+      color: #c084fc;
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-family: 'Outfit', sans-serif;
       font-weight: 600;
+      transition: all 0.2s;
+    }
+    .ai-key-btn:hover {
+      background: rgba(168, 85, 247, 0.35);
+    }
+    .chat-box {
+      height: 320px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 12px;
+      background: #0d0d15;
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .chat-msg {
+      max-width: 85%;
+      padding: 14px 18px;
+      border-radius: 16px;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .msg-bot {
+      align-self: flex-start;
+      background: rgba(30, 30, 46, 0.85);
+      border: 1px solid rgba(168, 85, 247, 0.25);
+      color: #e2e8f0;
+    }
+    .msg-user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #7e22ce, #9333ea);
+      color: #ffffff;
+    }
+    .msg-bot pre {
+      background: #08080c;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin: 8px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .pill {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      color: #cbd5e1;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .pill:hover {
+      background: rgba(168, 85, 247, 0.2);
+      border-color: rgba(168, 85, 247, 0.4);
+      color: #ffffff;
+    }
+    .input-row {
+      display: flex;
+      gap: 12px;
+    }
+    .chat-input {
+      flex: 1;
+      background: #0d0d15;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+      padding: 14px 18px;
+      border-radius: 14px;
+      color: #ffffff;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    .chat-input:focus {
+      border-color: #a855f7;
+      box-shadow: 0 0 15px rgba(168, 85, 247, 0.25);
+    }
+    .send-btn {
+      background: linear-gradient(135deg, #7e22ce, #a855f7);
+      color: #ffffff;
+      border: none;
+      padding: 0 24px;
+      border-radius: 14px;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .send-btn:hover {
+      background: linear-gradient(135deg, #9333ea, #c084fc);
     }
     .footer {
+      text-align: center;
       font-size: 0.85rem;
       color: #64748b;
+      margin-top: 8px;
     }
     .footer a {
       color: #c084fc;
@@ -157,40 +301,147 @@
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="badge">
-      <div class="badge-dot"></div>
-      VampireHosting IPv4 Installed
-    </div>
-    <h1 class="logo">VampireHosting</h1>
-    <p class="subtitle">High-RAM Private Node Successfully Connected to Public IPv4.</p>
+  <div class="container">
+    <!-- Main Dashboard Card -->
+    <div class="card">
+      <div class="badge">
+        <div class="badge-dot"></div>
+        VampireHosting IPv4 Routed & Active
+      </div>
+      <h1 class="logo">VampireHosting</h1>
+      <p class="subtitle">High-RAM Private VPS Connected to Public IPv4 24/7 with Zero Downtime.</p>
 
-    <div class="feature-grid">
-      <div class="feature-box">
-        <div class="feature-num">65,535</div>
-        <div class="feature-desc">All Ports Routed</div>
+      <div class="feature-grid">
+        <div class="feature-box">
+          <div class="feature-num">24/7 Uptime</div>
+          <div class="feature-desc">Auto-Restart Systemd</div>
+        </div>
+        <div class="feature-box">
+          <div class="feature-num">TCP + UDP</div>
+          <div class="feature-desc">All Game Ports Supported</div>
+        </div>
+        <div class="feature-box">
+          <div class="feature-num">&lt; 1 ms</div>
+          <div class="feature-desc">High-Speed State Tunnel</div>
+        </div>
       </div>
-      <div class="feature-box">
-        <div class="feature-num">TCP + UDP</div>
-        <div class="feature-desc">Full Protocol Support</div>
-      </div>
-      <div class="feature-box">
-        <div class="feature-num">&lt; 1 ms</div>
-        <div class="feature-desc">WireGuard Wire-Speed</div>
+
+      <div class="status-bar">
+        <div class="status-online">● TUNNEL ACTIVE (24/7)</div>
+        <div style="color: #c084fc;">Port 80 (HTTP) • Port 443 (HTTPS) • Port 25565 (Game)</div>
       </div>
     </div>
 
-    <div class="status-box">
-      <div class="status-left">
-        <span>Tunnel Status:</span>
-        <span class="status-val">● ONLINE</span>
+    <!-- AI Online Assistance Card -->
+    <div class="ai-card">
+      <div class="ai-header">
+        <div class="ai-title">
+          <span>🦇</span> Vampire AI Support Assistant
+        </div>
+        <button class="ai-key-btn" onclick="setGeminiKey()">🔑 Set Gemini API Key</button>
       </div>
-      <div style="color: #c084fc; font-weight: 600;">Port 80 (HTTP) Active</div>
+
+      <div class="pills">
+        <div class="pill" onclick="askPreset('How do I forward my Minecraft server port 25565?')">🎮 Minecraft Port 25565</div>
+        <div class="pill" onclick="askPreset('How do I install Pterodactyl panel on this high-RAM node?')">🦖 Pterodactyl Setup</div>
+        <div class="pill" onclick="askPreset('How do I forward FiveM or Palworld ports?')">🚀 FiveM / Palworld</div>
+        <div class="pill" onclick="askPreset('How do I add a new custom port in Vampire?')">➕ Add New Port</div>
+      </div>
+
+      <div class="chat-box" id="chatBox">
+        <div class="chat-msg msg-bot">
+          Hello! I am <strong>Vampire AI</strong>, your online assistant powered by Google Gemini. I am trained on VampireHosting, NAT VPS setup, Linux networking, and game server hosting. How can I help you today?
+        </div>
+      </div>
+
+      <div class="input-row">
+        <input type="text" id="userInput" class="chat-input" placeholder="Ask Vampire AI about ports, game servers, or debugging..." onkeydown="if(event.key==='Enter') sendMessage()">
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+      </div>
     </div>
 
     <div class="footer">
-      Powered by <a href="https://vampirenodes.in" target="_blank">VampireNodes.in</a> — High-RAM VPS Public IPv4 Router
+      Powered by <a href="https://vampirenodes.in" target="_blank">VampireNodes.in</a> — 1-Command High-RAM VPS Public IP Router
     </div>
   </div>
+
+  <script>
+    const SYSTEM_PROMPT = "You are Vampire AI, the official technical support bot for VampireHosting (vampirenodes.in). VampireHosting routes cheap, high-RAM private VPSs (NAT VPS, LXC containers, IPv6 VPS) through a public IPv4 gateway node with auto-restart 24/7. Always give concise, accurate Linux bash commands for server setup, port forwarding ('sudo vampire add <port>'), game server hosting (Minecraft 25565, FiveM 30120, Palworld 8211), and Pterodactyl wings configuration.";
+
+    function setGeminiKey() {
+      const current = localStorage.getItem('vampire_gemini_key') || '';
+      const key = prompt('Enter your Google Gemini API Key (Get free at https://aistudio.google.com/app/apikey):', current);
+      if (key !== null) {
+        localStorage.setItem('vampire_gemini_key', key.trim());
+        alert('Gemini API Key saved securely in your browser!');
+      }
+    }
+
+    function askPreset(text) {
+      document.getElementById('userInput').value = text;
+      sendMessage();
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('userInput');
+      const query = input.value.trim();
+      if (!query) return;
+
+      let key = localStorage.getItem('vampire_gemini_key');
+      if (!key) {
+        key = prompt('Please enter your Google Gemini API Key to chat with Vampire AI (Get one free at https://aistudio.google.com/app/apikey):');
+        if (!key) return;
+        localStorage.setItem('vampire_gemini_key', key.trim());
+      }
+
+      const chatBox = document.getElementById('chatBox');
+      
+      // User message
+      const userDiv = document.createElement('div');
+      userDiv.className = 'chat-msg msg-user';
+      userDiv.innerText = query;
+      chatBox.appendChild(userDiv);
+      input.value = '';
+      chatBox.scrollTop = chatBox.scrollHeight;
+
+      // Thinking indicator
+      const botDiv = document.createElement('div');
+      botDiv.className = 'chat-msg msg-bot';
+      botDiv.innerText = 'Vampire AI is thinking...';
+      chatBox.appendChild(botDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+
+      try {
+        const payload = {
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: 'user', parts: [{ text: query }] }]
+        };
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (data.candidates && data.candidates[0].content.parts[0].text) {
+          const rawText = data.candidates[0].content.parts[0].text;
+          // Simple markdown format
+          botDiv.innerHTML = rawText
+            .replace(/```bash([^`]+)```/g, '<pre><code>$1</code></pre>')
+            .replace(/```([^`]+)```/g, '<pre><code>$1</code></pre>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br>');
+        } else if (data.error) {
+          botDiv.innerHTML = `<span style="color:#ef4444;">Error: ${data.error.message}</span>`;
+        } else {
+          botDiv.innerText = 'Sorry, could not generate a response. Please check your Gemini API key.';
+        }
+      } catch (err) {
+        botDiv.innerHTML = `<span style="color:#ef4444;">Connection error: ${err.message}</span>`;
+      }
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  </script>
 </body>
 </html>

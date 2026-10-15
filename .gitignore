@@ -1,0 +1,14 @@
+﻿# Never commit real secrets
+.env
+*.key
+*.pem
+*.p12
+
+# Wrangler local state
+.wrangler/
+node_modules/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
