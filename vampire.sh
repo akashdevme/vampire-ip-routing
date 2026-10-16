@@ -178,6 +178,154 @@ EOF
 }
 
 # ==============================================================================
+# 24/7 AUTO-CONFIG & SSH DISCONNECT SHIELD
+# ==============================================================================
+apply_247_optimizations() {
+  log_step "Enabling user lingering so SSH logout never kills processes..."
+  loginctl enable-linger root 2>/dev/null || true
+  if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    loginctl enable-linger "$SUDO_USER" 2>/dev/null || true
+    log_info "Linger enabled for user: ${BOLD}$SUDO_USER${NC} and root"
+  else
+    log_info "Linger enabled for root"
+  fi
+
+  log_step "Configuring systemd-logind to protect background processes on logout..."
+  mkdir -p /etc/systemd/logind.conf.d
+  cat > /etc/systemd/logind.conf.d/99-vampire-247.conf << 'EOF'
+[Login]
+KillUserProcesses=no
+KillExcludeUsers=root
+EOF
+  systemctl restart systemd-logind >/dev/null 2>&1 || true
+  log_info "systemd-logind configured: KillUserProcesses=no"
+
+  log_step "Tuning TCP keepalive so tunnels never drop on idle..."
+  mkdir -p /etc/sysctl.d
+  cat > /etc/sysctl.d/99-vampire-keepalive.conf << 'EOF'
+net.ipv4.tcp_keepalive_time = 60
+net.ipv4.tcp_keepalive_intvl = 10
+net.ipv4.tcp_keepalive_probes = 6
+EOF
+  sysctl -p /etc/sysctl.d/99-vampire-keepalive.conf >/dev/null 2>&1 || true
+  log_info "TCP keepalive active (60s probe cycle)"
+}
+
+setup_app_247() {
+  local app_name="${1:-}" app_cmd="${2:-}" app_dir="${3:-}"
+
+  banner
+  echo -e "${BOLD}${GREEN}=== VAMPIRE 24/7 APP / GAME DAEMONIZER ===${NC}"
+  echo -e "${YELLOW}  Convert any game server, website, or bot into a 24/7 auto-restarting service.${NC}\n"
+
+  if [ -z "$app_name" ]; then
+    read -rp "  Enter service name (e.g. minecraft, myweb, bot): " app_name
+  fi
+  app_name=$(echo "$app_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
+  [ -z "$app_name" ] && { log_error "Invalid service name."; exit 1; }
+
+  if [ -z "$app_cmd" ]; then
+    read -rp "  Enter full start command (e.g. java -Xmx4G -jar server.jar nogui): " app_cmd
+  fi
+  [ -z "$app_cmd" ] && { log_error "Command cannot be empty."; exit 1; }
+
+  if [ -z "$app_dir" ]; then
+    read -rp "  Enter working directory [Default: $(pwd)]: " app_dir
+    app_dir="${app_dir:-$(pwd)}"
+  fi
+
+  log_step "Creating 24/7 systemd service for: $app_name ..."
+
+  cat > "/etc/systemd/system/${app_name}.service" << EOF
+[Unit]
+Description=Vampire 24/7 Service -- $app_name
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=$app_dir
+ExecStart=$app_cmd
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable --now "${app_name}.service" >/dev/null 2>&1
+  systemctl restart "${app_name}.service"
+
+  sleep 1
+  if systemctl is-active --quiet "${app_name}.service"; then
+    log_info "Service ${BOLD}$app_name${NC} is now running 24/7 in the background!"
+    echo ""
+    echo -e "  Manage your service:"
+    echo -e "    Status:   ${CYAN}systemctl status $app_name${NC}"
+    echo -e "    Logs:     ${CYAN}journalctl -u $app_name -f${NC}"
+    echo -e "    Restart:  ${CYAN}systemctl restart $app_name${NC}"
+    echo -e "    Stop:     ${CYAN}systemctl stop $app_name${NC}"
+    echo ""
+  else
+    log_warn "Service started but may have exited. Check: journalctl -u $app_name -n 30"
+  fi
+}
+
+setup_247() {
+  local subcmd="${1:-}"
+
+  if [ "$subcmd" = "app" ] || [ "$subcmd" = "service" ]; then
+    shift || true
+    setup_app_247 "$@"
+    return
+  fi
+
+  banner
+  echo -e "${BOLD}${GREEN}=== VAMPIRE 24/7 AUTO-CONFIG & DISCONNECT SHIELD ===${NC}"
+  echo -e "${YELLOW}  Locking system so services NEVER stop when SSH closes or VPS reboots.${NC}\n"
+
+  apply_247_optimizations
+
+  log_step "Verifying auto-healing watchdog & systemd services..."
+  setup_watchdog
+
+  local any_found=false
+  for svc in vampire-gateway vampire-node vampire-web; do
+    if [ -f "/etc/systemd/system/${svc}.service" ]; then
+      systemctl daemon-reload
+      systemctl enable --now "$svc" >/dev/null 2>&1 || true
+      systemctl restart "$svc" >/dev/null 2>&1 || true
+      log_info "Service active & enabled on boot: ${BOLD}$svc${NC}"
+      any_found=true
+    fi
+  done
+
+  if ! $any_found; then
+    log_warn "No Vampire gateway or node service found yet on this machine."
+    echo -e "  Run ${CYAN}sudo vampire gateway${NC} (Public VPS) or ${CYAN}sudo vampire node ...${NC} (Private VPS) to setup routing."
+  fi
+
+  echo ""
+  echo -e "${GREEN}${BOLD}[OK] 24/7 AUTO-CONFIG COMPLETE!${NC}"
+  echo -e "${CYAN}================================================================================${NC}"
+  echo -e "  ${BOLD}Protections Active:${NC}"
+  echo -e "    * SSH Disconnect Shield:  ${GREEN}Active (KillUserProcesses disabled)${NC}"
+  echo -e "    * User Lingering:         ${GREEN}Enabled (processes survive logout)${NC}"
+  echo -e "    * Auto-Heal Watchdog:     ${GREEN}Running (checks every 30s)${NC}"
+  echo -e "    * TCP Keepalive:          ${GREEN}Optimized (no idle timeouts)${NC}"
+  echo -e "    * Boot Auto-Start:        ${GREEN}Enabled in systemd${NC}"
+  echo ""
+  echo -e "  ${BOLD}${YELLOW}Running a Game Server / Web App / Bot?${NC}"
+  echo -e "  To make your own app (Minecraft, Node, Python, FiveM) run 24/7:"
+  echo -e "    ${CYAN}sudo vampire 247 app${NC}   (Interactive 24/7 service wizard)"
+  echo -e "    or use screen: ${CYAN}screen -S myapp${NC} -> run app -> press ${BOLD}Ctrl+A, D${NC} to detach."
+  echo -e "${CYAN}================================================================================${NC}\n"
+}
+
+# ==============================================================================
 # GATEWAY SETUP
 # ==============================================================================
 setup_gateway() {
