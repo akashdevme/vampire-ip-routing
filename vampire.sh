@@ -738,7 +738,7 @@ start_test_page() {
 # ==============================================================================
 # GEMINI AI ASSISTANT
 # ==============================================================================
-GEMINI_SYSTEM_PROMPT="You are Vampire AI, the official technical support bot for VampireHosting (vampirenodes.in). VampireHosting uses FRP (fast reverse proxy) to route cheap, high-RAM private VPSs (NAT VPS, LXC containers, IPv6-only VPS) through a public IPv4 gateway using persistent TCP tunnels for 24/7 uptime. The key commands are: 'sudo vampire gateway' (on public VPS), 'sudo vampire node --server <IP> --token <TOKEN>' (on private VPS), 'sudo vampire add <port>' (forward extra ports), 'sudo vampire ai' (this assistant), 'sudo vampire status' (health check), 'sudo vampire logs' (view logs). Provide concise, accurate, copy-paste-ready Linux bash commands for: server setup, port forwarding, firewall (ufw/iptables), game server hosting (Minecraft 25565, FiveM 30120, Palworld 8211, Rust 28015, Pterodactyl wings), nginx reverse proxy, SSL/TLS (certbot), and debugging tunnels."
+GEMINI_SYSTEM_PROMPT="You are Vampire AI, the official technical support bot for VampireHosting (vampirenodes.in). VampireHosting uses FRP (fast reverse proxy) to route cheap, high-RAM private VPSs (NAT VPS, LXC containers, IPv6-only VPS) through a public IPv4 gateway using persistent TCP tunnels for 24/7 uptime. The key commands are: 'sudo vampire gateway' (on public VPS), 'sudo vampire node --server <IP> --token <TOKEN>' (on private VPS), 'sudo vampire add <port>' (forward extra ports), 'sudo vampire 247' (auto-configure 24/7 uptime & anti-SSH-disconnect), 'sudo vampire ai' (this assistant), 'sudo vampire status' (health check), 'sudo vampire logs' (view logs). Provide concise, accurate, copy-paste-ready Linux bash commands for: server setup, port forwarding, firewall (ufw/iptables), game server hosting (Minecraft 25565, FiveM 30120, Palworld 8211, Rust 28015, Pterodactyl wings), nginx reverse proxy, SSL/TLS (certbot), and debugging tunnels."
 
 call_gemini() {
   local api_key="$1" query="$2"
@@ -832,18 +832,19 @@ check_root "$@"
 CMD="${1:-help}"; shift || true
 
 case "$CMD" in
-  gateway|server)      setup_gateway "$@"; setup_watchdog ;;
-  node|client)         setup_node "$@"; setup_watchdog ;;
-  add|forward)         add_port "$@" ;;
-  remove|del)          remove_port "$@" ;;
-  page|web|landing)    start_test_page ;;
-  ai|ask|chat|support) vampire_ai "$@" ;;
-  status|health)       show_status ;;
-  logs|log)            show_logs "$@" ;;
-  update|upgrade)      do_update ;;
-  watchdog)            setup_watchdog ;;
-  uninstall)           uninstall_vampire ;;
-  version|-v)          echo "Vampire IP Router v${VAMPIRE_VERSION}" ;;
+  gateway|server)               setup_gateway "$@"; setup_watchdog ;;
+  node|client)                  setup_node "$@"; setup_watchdog ;;
+  247|24-7|always-on|keepalive) setup_247 "$@" ;;
+  add|forward)                  add_port "$@" ;;
+  remove|del)                   remove_port "$@" ;;
+  page|web|landing)             start_test_page ;;
+  ai|ask|chat|support)          vampire_ai "$@" ;;
+  status|health)                show_status ;;
+  logs|log)                     show_logs "$@" ;;
+  update|upgrade)               do_update ;;
+  watchdog)                     setup_watchdog ;;
+  uninstall)                    uninstall_vampire ;;
+  version|-v)                   echo "Vampire IP Router v${VAMPIRE_VERSION}" ;;
   *)
     banner
     echo -e "${BOLD}  USAGE${NC}"
@@ -851,6 +852,10 @@ case "$CMD" in
     echo -e "  ${BOLD}Setup:${NC}"
     echo -e "    ${CYAN}sudo vampire gateway${NC}                         On your PUBLIC VPS"
     echo -e "    ${CYAN}sudo vampire node --server IP --token TOKEN${NC}  On your PRIVATE VPS"
+    echo ""
+    echo -e "  ${BOLD}24/7 & Disconnect Protection:${NC}"
+    echo -e "    ${CYAN}sudo vampire 247${NC}                             Auto-config 24/7 uptime & SSH disconnect shield"
+    echo -e "    ${CYAN}sudo vampire 247 app${NC}                         Make any custom game/server app run 24/7 as a service"
     echo ""
     echo -e "  ${BOLD}Ports:${NC}"
     echo -e "    ${CYAN}sudo vampire add <port> [tcp|udp|both]${NC}       Forward any port"

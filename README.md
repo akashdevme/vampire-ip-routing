@@ -75,6 +75,14 @@ Now your private high-RAM VPS has the power of the public IPv4:
 ## 🛠️ Management Commands
 
 You can run `vampire` from anywhere on either server:
+- Ensure 24/7 online uptime & prevent SSH logout from killing services:
+  ```bash
+  sudo vampire 247
+  ```
+- Turn any game server or application (Minecraft, Node, Python, FiveM) into a 24/7 background service:
+  ```bash
+  sudo vampire 247 app
+  ```
 - Check live tunnel status:
   ```bash
   sudo vampire status
