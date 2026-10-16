@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>24/7 Uptime & Disconnect Protection Guide — VampireHosting</title>
+  <meta name="description" content="Learn how to run your whole Public IP and game/web servers online 24/7 without shutting down when SSH closes.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #09090e;
+      --card: rgba(15,15,26,0.92);
+      --border: rgba(168,85,247,0.28);
+      --border-h: rgba(168,85,247,0.6);
+      --purple: #a855f7;
+      --purple-d: #7e22ce;
+      --purple-dim: rgba(168,85,247,0.14);
+      --green: #22c55e;
+      --green-dim: rgba(34,197,94,0.14);
+      --amber: #f59e0b;
+      --amber-dim: rgba(245,158,11,0.14);
+      --text: #e5e5f0;
+      --muted: #94a3b8;
+      --dim: #64748b;
+      --mono: 'JetBrains Mono', monospace;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 16px 80px;
+      position: relative;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      top: -200px; left: 50%;
+      transform: translateX(-50%);
+      width: 1000px; height: 800px;
+      background: radial-gradient(ellipse at 50% 20%,
+        rgba(168,85,247,0.2) 0%, rgba(244,63,94,0.08) 50%, transparent 70%);
+      pointer-events: none; z-index: 0;
+    }
+    .container {
+      position: relative; z-index: 1;
+      max-width: 920px; width: 100%;
+      display: flex; flex-direction: column; gap: 28px;
+    }
+    /* Top Bar */
+    .top-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 12px;
+      padding: 4px 8px;
+    }
+    .nav-back {
+      display: inline-flex; align-items: center; gap: 8px;
+      color: var(--muted); text-decoration: none; font-size: .9rem; font-weight: 600;
+      padding: 8px 16px; border-radius: 999px;
+      background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+      transition: all .2s;
+    }
+    .nav-back:hover { color: #fff; background: var(--purple-dim); border-color: var(--border); transform: translateX(-3px); }
+    .badge {
+      display: inline-flex; align-items: center; gap: 9px;
+      padding: 7px 18px;
+      background: var(--green-dim);
+      border: 1px solid rgba(34,197,94,0.38);
+      color: #4ade80;
+      font-size: .82rem; font-weight: 700;
+      border-radius: 999px;
+      letter-spacing: .5px; text-transform: uppercase;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      background: var(--green); border-radius: 50%;
+      box-shadow: 0 0 10px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: .4; transform: scale(.8); }
+    }
+    /* Main Card */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border-radius: 28px;
+      padding: 42px 40px;
+      box-shadow: 0 30px 70px -20px rgba(0,0,0,.9), 0 0 40px -8px rgba(168,85,247,.12);
+    }
+    h1.title {
+      font-size: 2.8rem; font-weight: 800; letter-spacing: -1.2px; line-height: 1.15;
+      background: linear-gradient(135deg, #fff 20%, #c084fc 62%, #f43f5e 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 14px;
+    }
+    .subtitle {
+      font-size: 1.12rem; color: var(--muted); line-height: 1.6; margin-bottom: 32px;
+    }
+    /* Alert / Explainer Box */
+    .alert-box {
+      background: rgba(245,158,11,0.08);
+      border: 1px solid rgba(245,158,11,0.28);
+      border-radius: 18px;
+      padding: 20px 24px;
+      margin-bottom: 32px;
+      display: flex; gap: 16px; align-items: flex-start;
+    }
+    .alert-icon { font-size: 1.5rem; flex-shrink: 0; line-height: 1; margin-top: 2px; }
+    .alert-title { font-size: 1rem; font-weight: 700; color: #fbbf24; margin-bottom: 6px; }
+    .alert-desc { font-size: .88rem; color: #cbd5e1; line-height: 1.55; }
+    /* Sections */
+    .guide-section {
+      margin-top: 36px; padding-top: 32px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+    }
+    .section-header {
+      display: flex; align-items: center; gap: 14px; margin-bottom: 18px;
+    }
+    .step-number {
+      width: 36px; height: 36px; border-radius: 12px;
+      background: var(--purple-dim); border: 1px solid var(--border);
+      color: #c084fc; font-weight: 800; font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .section-title { font-size: 1.45rem; font-weight: 700; color: #fff; }
+    .section-desc { font-size: .94rem; color: var(--muted); line-height: 1.65; margin-bottom: 18px; }
+    /* Feature comparison pills */
+    .tags-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .tag {
+      font-size: .76rem; font-weight: 600; padding: 4px 12px; border-radius: 999px;
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); color: #cbd5e1;
+    }
+    .tag.accent { background: var(--purple-dim); border-color: var(--border); color: #c084fc; }
+    .tag.green  { background: var(--green-dim); border-color: rgba(34,197,94,0.3); color: #4ade80; }
+    /* Command Boxes */
+    .cmd-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .cmd-label {
+      font-size: .75rem; color: var(--dim); text-transform: uppercase;
+      letter-spacing: .6px; font-weight: 700;
+    }
+    .cmd-box {
+      background: #06060c;
+      border: 1px solid rgba(168,85,247,0.22);
+      border-radius: 14px;
+      padding: 14px 18px;
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      font-family: var(--mono); font-size: .86rem; color: #e2e8f0;
+      transition: border-color .2s;
+    }
+    .cmd-box:hover { border-color: var(--border-h); }
+    .cmd-text { overflow-x: auto; white-space: nowrap; scrollbar-width: none; flex: 1; }
+    .cmd-text::-webkit-scrollbar { display: none; }
+    .copy-btn {
+      background: var(--purple-d); color: #fff;
+      border: none; padding: 8px 16px; border-radius: 9px;
+      font-size: .8rem; font-weight: 700; cursor: pointer;
+      font-family: 'Outfit', sans-serif;
+      transition: background .2s, transform .15s;
+      flex-shrink: 0;
+    }
+    .copy-btn:hover { background: var(--purple); transform: scale(1.03); }
+    .copy-btn.copied { background: #15803d; color: #fff; }
+    /* Screen keys visual */
+    .key-combo {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18);
+      padding: 2px 8px; border-radius: 6px; font-family: var(--mono); font-size: .82rem; color: #fff;
+    }
+    /* Steps list */
+    .steps-list {
+      list-style: none; display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;
+    }
+    .steps-list li {
+      display: flex; gap: 12px; font-size: .92rem; color: #cbd5e1; line-height: 1.5;
+    }
+    .bullet {
+      color: var(--purple); font-weight: 700; flex-shrink: 0;
+    }
+    /* Footer */
+    footer {
+      text-align: center; color: var(--dim); font-size: .82rem;
+      margin-top: 20px;
+    }
+    footer a { color: var(--purple); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+    @media (max-width: 640px) {
+      .card { padding: 30px 20px; border-radius: 20px; }
+      h1.title { font-size: 2.1rem; }
+      .cmd-box { font-size: .8rem; padding: 12px 14px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-bar">
+      <a href="/" class="nav-back">← Back to Home</a>
+      <div class="badge"><div class="dot"></div>24/7 Verified Guide</div>
+    </div>
+
+    <div class="card">
+      <h1 class="title">How to Keep Everything 24/7 Online</h1>
+      <p class="subtitle">
+        Everything you need to know to ensure your routed Public IP and your hosted games/apps never go offline when you close SSH or disconnect from your VPS.
+      </p>
+
+      <div class="alert-box">
+        <div class="alert-icon">⚡</div>
+        <div>
+          <div class="alert-title">Why does it go off when closing SSH?</div>
+          <div class="alert-desc">
+            When you close your terminal or SSH window, Linux automatically sends a <strong>SIGHUP (Hangup Signal)</strong> to any foreground command running in that session. To keep things online 24/7, programs must be run as <strong>kernel network interfaces</strong>, <strong>systemd services</strong>, or detached via <strong>screen</strong>.
+          </div>
+        </div>
+      </div>
+
+      <!-- METHOD 1 -->
+      <div class="guide-section" style="border-top: none; padding-top: 0; margin-top: 0;">
+        <div class="section-header">
+          <div class="step-number">1</div>
+          <h2 class="section-title">Whole IP Routing (Recommended — 24/7 Kernel Tunnel)</h2>
+        </div>
+        <p class="section-desc">
+          Route the <strong>ENTIRE Public IPv4 (all 65,535 TCP & UDP ports)</strong> to your private VPS using kernel-level WireGuard. Because WireGuard runs directly in the Linux kernel as a network interface (<code style="font-family: var(--mono); color: var(--purple);">wg0</code>), <strong>it has zero connection to SSH and stays live 24/7 automatically as long as the VPS is powered on</strong>.
+        </p>
+
+        <div class="tags-row">
+          <span class="tag accent">All 65,535 Ports</span>
+          <span class="tag green">Auto-starts on Boot</span>
+          <span class="tag">Zero SSH Dependency</span>
+          <span class="tag">25s Keepalive</span>
+        </div>
+
+        <div class="cmd-group">
+          <div class="cmd-label">Step 1 — Run on Public IPv4 VPS (Gateway)</div>
+          <div class="cmd-box">
+            <span class="cmd-text">sudo bash wireguard-server.sh</span>
+            <button class="copy-btn" onclick="copyCmd(this, 'sudo bash wireguard-server.sh')">Copy</button>
+          </div>
+          <p style="font-size: .84rem; color: var(--muted); margin-bottom: 8px;">
+            Choose <strong>Option 1 (WHOLE IP)</strong>. It protects SSH port 22 automatically and forwards all other 65,535 ports to your private node.
+          </p>
+
+          <div class="cmd-label" style="margin-top: 8px;">Step 2 — Run on Private / NAT VPS (Worker)</div>
+          <div class="cmd-box">
+            <span class="cmd-text">sudo bash wireguard-client.sh</span>
+            <button class="copy-btn" onclick="copyCmd(this, 'sudo bash wireguard-client.sh')">Copy</button>
+          </div>
+          <p style="font-size: .84rem; color: var(--muted);">
+            Enter your Public VPS IP and keys when prompted. The client enables <code style="font-family: var(--mono); color: #4ade80;">wg-quick@wg0</code> and keeps the connection alive 24/7.
+          </p>
+        </div>
+      </div>
+
+      <!-- METHOD 2 -->
+      <div class="guide-section">
+        <div class="section-header">
+          <div class="step-number">2</div>
+          <h2 class="section-title">Vampire 24/7 Disconnect Shield (For FRP Users)</h2>
+        </div>
+        <p class="section-desc">
+          If you are using the standard Vampire 1-command installer (<code style="font-family: var(--mono); color: var(--purple);">vampire.sh</code>), run this one command on your VPS to configure the OS to never terminate your services when SSH disconnects.
+        </p>
+
+        <div class="cmd-group">
+          <div class="cmd-label">Run on either VPS</div>
+          <div class="cmd-box">
+            <span class="cmd-text">sudo vampire 247</span>
+            <button class="copy-btn" onclick="copyCmd(this, 'sudo vampire 247')">Copy</button>
+          </div>
+        </div>
+
+        <ul class="steps-list">
+          <li><span class="bullet">✔</span> <strong>Enables User Lingering:</strong> Background tasks continue running after logout.</li>
+          <li><span class="bullet">✔</span> <strong>Disables KillUserProcesses:</strong> Prevents systemd-logind from killing background tasks.</li>
+          <li><span class="bullet">✔</span> <strong>Kernel TCP Keepalive:</strong> 60s probe cycles prevent NAT routers and firewalls from dropping idle sessions.</li>
+          <li><span class="bullet">✔</span> <strong>Auto-Healing Watchdog:</strong> Checks every 30s and auto-restarts services if any tunnel drops.</li>
+        </ul>
+      </div>
+
+      <!-- METHOD 3 -->
+      <div class="guide-section">
+        <div class="section-header">
+          <div class="step-number">3</div>
+          <h2 class="section-title">Running Your Game Server / Web App 24/7</h2>
+        </div>
+        <p class="section-desc">
+          Once your IP tunnel is live 24/7, make sure your game server (Minecraft, FiveM, Palworld) or script doesn't close with SSH:
+        </p>
+
+        <h3 style="font-size: 1.05rem; color: #fff; margin-bottom: 10px;">Option A — One-Command 24/7 Daemonizer (Easiest)</h3>
+        <p style="font-size: .86rem; color: var(--muted); margin-bottom: 10px;">
+          Automatically turns any startup command into an auto-restarting systemd service that boots with your VPS:
+        </p>
+        <div class="cmd-group">
+          <div class="cmd-box">
+            <span class="cmd-text">sudo vampire 247 run "java -Xmx4G -jar server.jar nogui"</span>
+            <button class="copy-btn" onclick="copyCmd(this, 'sudo vampire 247 run &quot;java -Xmx4G -jar server.jar nogui&quot;')">Copy</button>
+          </div>
+          <div class="cmd-box">
+            <span class="cmd-text">sudo vampire 247 run "./start.sh"</span>
+            <button class="copy-btn" onclick="copyCmd(this, 'sudo vampire 247 run &quot;./start.sh&quot;')">Copy</button>
+          </div>
+        </div>
+
+        <h3 style="font-size: 1.05rem; color: #fff; margin-top: 22px; margin-bottom: 10px;">Option B — Using Screen (For Interactive Game Console)</h3>
+        <p style="font-size: .86rem; color: var(--muted); margin-bottom: 10px;">
+          If you want to view your Minecraft / FiveM console and type in-game commands:
+        </p>
+        <div class="cmd-group">
+          <div class="cmd-label">1. Install and start a named screen session</div>
+          <div class="cmd-box">
+            <span class="cmd-text">sudo apt install screen -y && screen -S myserver</span>
+            <button class="copy-btn" onclick="copyCmd(this, 'sudo apt install screen -y && screen -S myserver')">Copy</button>
+          </div>
+          <div class="cmd-label" style="margin-top: 6px;">2. Inside the screen, run your server command</div>
+          <p style="font-size: .84rem; color: var(--muted); margin-bottom: 6px;">
+            Run your server (e.g. <code style="font-family: var(--mono); color: #fff;">java -jar server.jar</code>).
+          </p>
+          <div class="cmd-label" style="margin-top: 6px;">3. Safely detach from the screen</div>
+          <p style="font-size: .86rem; color: #cbd5e1; margin-bottom: 8px;">
+            Press <span class="key-combo">Ctrl + A</span>, then press <span class="key-combo">D</span>.
+            <br><span style="color: #4ade80; font-size: .82rem;">You will see <code style="font-family: var(--mono);">[detached from ...]</code>. You can now close your SSH window!</span>
+          </p>
+          <div class="cmd-label" style="margin-top: 6px;">4. Reattach anytime when you reconnect via SSH</div>
+          <div class="cmd-box">
+            <span class="cmd-text">screen -r myserver</span>
+            <button class="copy-btn" onclick="copyCmd(this, 'screen -r myserver')">Copy</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <footer>
+      VampireHosting &bull; 24/7 IPv4 Routing &bull; <a href="/">Return to Main Page</a> &bull; <a href="https://github.com/akashdevme/vampire-ip-routing" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </div>
+
+  <script>
+    function copyCmd(btn, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = "Copied!";
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.innerText = orig;
+          btn.classList.remove("copied");
+        }, 1800);
+      }).catch(() => {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        btn.innerText = "Copied!";
+        btn.classList.add("copied");
+        setTimeout(() => {
+          btn.innerText = "Copy";
+          btn.classList.remove("copied");
+        }, 1800);
+      });
+    }
+  </script>
+</body>
+</html>

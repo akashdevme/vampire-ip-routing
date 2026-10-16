@@ -9,10 +9,55 @@
 
 import vampireScript from "./vampire.sh";
 import landingHtml from "./index.html";
+import guideHtml from "./guide.html";
 
 const FALLBACK_KEY = "AQ.Ab8RN6IS0ITjOkeVLJC45xKAow6nANemr0HLEcMt1Ehf2MDTfg";
 
 const SYSTEM_PROMPT = `You are Vampire AI, the official technical support bot for VampireHosting (vampirenodes.in). VampireHosting uses FRP (fast reverse proxy) to route cheap, high-RAM private VPSs (NAT VPS, LXC containers, IPv6-only VPS) through a public IPv4 gateway using persistent TCP tunnels for 24/7 uptime. Key commands: "sudo vampire gateway" (public VPS), "sudo vampire node --server IP --token TOKEN" (private VPS), "sudo vampire add <port>" (forward extra ports), "sudo vampire 247" (auto-configure 24/7 uptime & anti-SSH-disconnect), "sudo vampire status" (health), "sudo vampire ai" (AI chat). Provide concise, accurate, copy-paste-ready Linux bash commands for: server setup, port forwarding, firewall (ufw/iptables), game servers (Minecraft 25565, FiveM 30120, Palworld 8211, Rust 28015), Pterodactyl wings, nginx reverse proxy, SSL with certbot, and debugging tunnels. Format code in markdown code blocks.`;
+
+const TERMINAL_GUIDE = `
+================================================================================
+  VAMPIRE HOSTING -- 24/7 UPTIME & DISCONNECT PROTECTION GUIDE
+================================================================================
+
+1. WHOLE IP ROUTING (Kernel-Level WireGuard Tunnel -- ALL 65,535 PORTS):
+   ---------------------------------------------------------------------
+   Runs directly as a kernel network interface (wg0). Auto-starts on boot.
+   It NEVER shuts down when SSH closes and forwards all 65,535 TCP/UDP ports!
+
+   Step 1 (On Public Gateway VPS):
+     sudo bash wireguard-server.sh
+     -> Choose Option 1 (WHOLE IP: ALL 65,535 Ports)
+
+   Step 2 (On Private High-RAM VPS):
+     sudo bash wireguard-client.sh
+     -> Enter Public IP & keys when prompted
+
+2. VAMPIRE 24/7 DISCONNECT SHIELD (For FRP / vampire.sh):
+   -------------------------------------------------------
+   Run on your VPS:
+     sudo vampire 247
+
+   * Enables user lingering so SSH logout never kills processes
+   * Configures systemd-logind: KillUserProcesses=no
+   * Tunes TCP keepalive (60s probe cycle) to avoid NAT timeouts
+   * Auto-healing watchdog monitors and restarts tunnels every 30s
+
+3. RUNNING YOUR GAME SERVER / APP 24/7:
+   -------------------------------------
+   Option A (One-Command 24/7 Daemonizer):
+     sudo vampire 247 run "java -Xmx4G -jar server.jar nogui"
+     sudo vampire 247 run "./start.sh"
+
+   Option B (Interactive Screen for Game Console):
+     sudo apt install screen -y && screen -S myserver
+     -> Start your server inside the screen
+     -> Press Ctrl+A, then D to detach safely (you can now close SSH!)
+     -> Re-attach anytime: screen -r myserver
+
+Web Guide: https://iproute.vampirenodes.in/guide
+================================================================================
+`;
 
 // ------------------------------------------------------------------------------
 // In-Memory Rate Limiter (Protects against abuse and API quota exhaustion)
@@ -50,6 +95,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const method = request.method;
+    const path = url.pathname.replace(/\/+$/, "") || "/";
 
     // ------------------------------------------------------------------
     // CORS pre-flight
@@ -61,13 +107,10 @@ export default {
     // ------------------------------------------------------------------
     // POST /api/chat — Server-side Gemini proxy
     // ------------------------------------------------------------------
-    if (method === "POST" && url.pathname === "/api/chat") {
+    if (method === "POST" && path === "/api/chat") {
       return handleAI(request, env);
     }
 
-    // ------------------------------------------------------------------
-    // GET / — curl/wget → bash script, browser → landing page
-    // ------------------------------------------------------------------
     const userAgent = request.headers.get("User-Agent") || "";
     const accept    = request.headers.get("Accept") || "";
     const isTerminal = userAgent.includes("curl") ||
@@ -75,6 +118,35 @@ export default {
                        userAgent.includes("wget") ||
                        (!accept.includes("text/html") && !accept.includes("*/*"));
 
+    // ------------------------------------------------------------------
+    // GET /guide — 24/7 Uptime & Disconnect Protection Guide
+    // ------------------------------------------------------------------
+    if (path === "/guide") {
+      if (isTerminal) {
+        return new Response(TERMINAL_GUIDE, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "public, max-age=300",
+          },
+        });
+      }
+
+      return new Response(guideHtml, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "public, max-age=300",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "SAMEORIGIN",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+        },
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // GET / — curl/wget → bash script, browser → landing page
+    // ------------------------------------------------------------------
     if (isTerminal) {
       // Strip UTF-8 BOM if present and ensure clean LF line endings for bash
       const cleanScript = vampireScript.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
