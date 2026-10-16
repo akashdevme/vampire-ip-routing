@@ -112,12 +112,13 @@ download_frp() {
 }
 
 install_vampire_cmd() {
-  if [ ! -f "$BIN_DIR/vampire" ]; then
-    log_step "Installing vampire shortcut command..."
-    curl -sSL "$INSTALL_URL" -o "$BIN_DIR/vampire" 2>/dev/null || \
-      cp "$0" "$BIN_DIR/vampire" 2>/dev/null || true
-    chmod +x "$BIN_DIR/vampire" 2>/dev/null || true
+  log_step "Updating vampire command in $BIN_DIR/vampire..."
+  if [ -f "$0" ] && [ "$0" != "$BIN_DIR/vampire" ]; then
+    cp -f "$0" "$BIN_DIR/vampire" 2>/dev/null || true
+  else
+    curl -sSL "$INSTALL_URL" -o "$BIN_DIR/vampire" 2>/dev/null || true
   fi
+  chmod +x "$BIN_DIR/vampire" 2>/dev/null || true
 }
 
 # ==============================================================================
@@ -142,7 +143,7 @@ rotate_log() {
 
 while true; do
   rotate_log
-  for svc in vampire-gateway vampire-node; do
+  for svc in vampire-gateway vampire-node frpc frps wg-quick@wg0 vampire-web vampire-app; do
     if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
       if ! systemctl is-active --quiet "$svc"; then
         log "ALERT: $svc is DOWN. Restarting..."
@@ -159,7 +160,8 @@ WATCHDOG
   cat > /etc/systemd/system/vampire-watchdog.service << EOF
 [Unit]
 Description=Vampire Hosting -- Auto Self-Heal Watchdog
-After=vampire-gateway.service vampire-node.service
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -174,7 +176,7 @@ EOF
 
   systemctl daemon-reload
   systemctl enable --now vampire-watchdog >/dev/null 2>&1
-  log_info "Watchdog installed -- auto self-healing every 30 seconds!"
+  log_info "Watchdog active -- auto self-healing every 30 seconds!"
 }
 
 # ==============================================================================
@@ -182,8 +184,11 @@ EOF
 # ==============================================================================
 apply_247_optimizations() {
   log_step "Enabling user lingering so SSH logout never kills processes..."
+  mkdir -p /var/lib/systemd/linger 2>/dev/null || true
+  touch /var/lib/systemd/linger/root 2>/dev/null || true
   loginctl enable-linger root 2>/dev/null || true
   if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+    touch "/var/lib/systemd/linger/${SUDO_USER}" 2>/dev/null || true
     loginctl enable-linger "$SUDO_USER" 2>/dev/null || true
     log_info "Linger enabled for user: ${BOLD}$SUDO_USER${NC} and root"
   else
@@ -191,17 +196,18 @@ apply_247_optimizations() {
   fi
 
   log_step "Configuring systemd-logind to protect background processes on logout..."
-  mkdir -p /etc/systemd/logind.conf.d
+  mkdir -p /etc/systemd/logind.conf.d 2>/dev/null || true
   cat > /etc/systemd/logind.conf.d/99-vampire-247.conf << 'EOF'
 [Login]
 KillUserProcesses=no
 KillExcludeUsers=root
 EOF
-  systemctl restart systemd-logind >/dev/null 2>&1 || true
+  # Safe reload without dropping active SSH sessions
+  systemctl reload systemd-logind >/dev/null 2>&1 || true
   log_info "systemd-logind configured: KillUserProcesses=no"
 
   log_step "Tuning TCP keepalive so tunnels never drop on idle..."
-  mkdir -p /etc/sysctl.d
+  mkdir -p /etc/sysctl.d 2>/dev/null || true
   cat > /etc/sysctl.d/99-vampire-keepalive.conf << 'EOF'
 net.ipv4.tcp_keepalive_time = 60
 net.ipv4.tcp_keepalive_intvl = 10
@@ -222,7 +228,7 @@ setup_app_247() {
     read -rp "  Enter service name (e.g. minecraft, myweb, bot): " app_name
   fi
   app_name=$(echo "$app_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')
-  [ -z "$app_name" ] && { log_error "Invalid service name."; exit 1; }
+  [ -z "$app_name" ] && app_name="vampire-app"
 
   if [ -z "$app_cmd" ]; then
     read -rp "  Enter full start command (e.g. java -Xmx4G -jar server.jar nogui): " app_cmd
@@ -277,9 +283,29 @@ EOF
 setup_247() {
   local subcmd="${1:-}"
 
+  # Make sure /usr/local/bin/vampire is updated on the system
+  install_vampire_cmd >/dev/null 2>&1 || true
+
   if [ "$subcmd" = "app" ] || [ "$subcmd" = "service" ]; then
     shift || true
     setup_app_247 "$@"
+    return
+  fi
+
+  if [ "$subcmd" = "run" ]; then
+    shift || true
+    local run_cmd="$*"
+    setup_app_247 "vampire-app" "$run_cmd" "$(pwd)"
+    return
+  fi
+
+  # If user passed a quoted command directly: sudo vampire 247 "java -jar server.jar"
+  if [ -n "$subcmd" ] && [ "$subcmd" != "all" ]; then
+    local run_cmd="$subcmd"
+    if [ $# -gt 0 ]; then
+      run_cmd="$run_cmd $*"
+    fi
+    setup_app_247 "vampire-app" "$run_cmd" "$(pwd)"
     return
   fi
 
@@ -293,9 +319,9 @@ setup_247() {
   setup_watchdog
 
   local any_found=false
-  for svc in vampire-gateway vampire-node vampire-web; do
-    if [ -f "/etc/systemd/system/${svc}.service" ]; then
-      systemctl daemon-reload
+  for svc in vampire-gateway vampire-node frpc frps wg-quick@wg0 vampire-web vampire-app; do
+    if [ -f "/etc/systemd/system/${svc}.service" ] || [ -f "/lib/systemd/system/${svc}.service" ] || systemctl is-enabled --quiet "$svc" 2>/dev/null; then
+      systemctl daemon-reload >/dev/null 2>&1 || true
       systemctl enable --now "$svc" >/dev/null 2>&1 || true
       systemctl restart "$svc" >/dev/null 2>&1 || true
       log_info "Service active & enabled on boot: ${BOLD}$svc${NC}"
@@ -304,8 +330,8 @@ setup_247() {
   done
 
   if ! $any_found; then
-    log_warn "No Vampire gateway or node service found yet on this machine."
-    echo -e "  Run ${CYAN}sudo vampire gateway${NC} (Public VPS) or ${CYAN}sudo vampire node ...${NC} (Private VPS) to setup routing."
+    log_warn "No active routing tunnel service found yet (vampire-gateway, vampire-node, frpc, or wg0)."
+    echo -e "  To set up routing: ${CYAN}sudo vampire gateway${NC} (Public VPS) or ${CYAN}sudo vampire node ...${NC} (Private VPS)"
   fi
 
   echo ""
@@ -318,10 +344,11 @@ setup_247() {
   echo -e "    * TCP Keepalive:          ${GREEN}Optimized (no idle timeouts)${NC}"
   echo -e "    * Boot Auto-Start:        ${GREEN}Enabled in systemd${NC}"
   echo ""
-  echo -e "  ${BOLD}${YELLOW}Running a Game Server / Web App / Bot?${NC}"
-  echo -e "  To make your own app (Minecraft, Node, Python, FiveM) run 24/7:"
-  echo -e "    ${CYAN}sudo vampire 247 app${NC}   (Interactive 24/7 service wizard)"
-  echo -e "    or use screen: ${CYAN}screen -S myapp${NC} -> run app -> press ${BOLD}Ctrl+A, D${NC} to detach."
+  echo -e "  ${BOLD}${YELLOW}Want to run a Game Server / Website / Bot 24/7?${NC}"
+  echo -e "  One-command 24/7 daemonizer:"
+  echo -e "    ${CYAN}sudo vampire 247 run \"java -Xmx4G -jar server.jar nogui\"${NC}"
+  echo -e "    or interactive wizard: ${CYAN}sudo vampire 247 app${NC}"
+  echo -e "    or screen: ${CYAN}screen -S myapp${NC} -> run app -> press ${BOLD}Ctrl+A, D${NC} to detach."
   echo -e "${CYAN}================================================================================${NC}\n"
 }
 

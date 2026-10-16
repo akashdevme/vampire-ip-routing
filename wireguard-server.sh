@@ -27,8 +27,22 @@ if [ -z "$DEFAULT_IFACE" ]; then
 fi
 echo "[+] Detected default public interface: $DEFAULT_IFACE"
 
-# 3. Ask for port forwarding details
-read -rp "Enter ports to forward (TCP/UDP, comma-separated, e.g., 80,443,25565): " FORWARD_PORTS
+# 3. Detect SSH port to preserve remote access
+SSH_PORT=$(ss -tlnp 2>/dev/null | grep -oP ':\K[0-9]+(?=.*sshd)' | head -n1 || echo "22")
+[ -z "$SSH_PORT" ] && SSH_PORT="22"
+echo "[+] Detected SSH management port: $SSH_PORT (will be preserved)"
+
+echo ""
+echo "Select Routing Mode:"
+echo "  1) WHOLE IP (ALL 65,535 Ports) [Recommended -- 24/7 Full Kernel Tunnel]"
+echo "  2) Custom Specific Ports (e.g. 80, 443, 25565)"
+read -rp "Enter choice [Default: 1]: " MODE_CHOICE
+MODE_CHOICE="${MODE_CHOICE:-1}"
+
+FORWARD_PORTS=""
+if [ "$MODE_CHOICE" = "2" ]; then
+  read -rp "Enter ports to forward (TCP/UDP, comma-separated, e.g., 80,443,25565): " FORWARD_PORTS
+fi
 
 # 4. Generate keys
 WG_DIR="/etc/wireguard"
@@ -49,28 +63,43 @@ echo "Server Public Key: $SERVER_PUB"
 echo "=========================================================="
 read -rp "Enter the Client's Public Key (generated on Private VPS): " CLIENT_PUB
 
-# Build iptables rules for each port
+# Build iptables rules
 POSTUP_RULES=""
 POSTDOWN_RULES=""
 
-IFS=',' read -ra ADDR <<< "$FORWARD_PORTS"
-for PORT in "${ADDR[@]}"; do
-  PORT=$(echo "$PORT" | xargs)
-  if [ -n "$PORT" ]; then
-    POSTUP_RULES+="PostUp = iptables -A FORWARD -i $DEFAULT_IFACE -o wg0 -p tcp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
-    POSTUP_RULES+="PostUp = iptables -A FORWARD -i $DEFAULT_IFACE -o wg0 -p udp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
-    POSTUP_RULES+="PostUp = iptables -t nat -A PREROUTING -i $DEFAULT_IFACE -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
-    POSTUP_RULES+="PostUp = iptables -t nat -A PREROUTING -i $DEFAULT_IFACE -p udp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
+if [ "$MODE_CHOICE" = "1" ] || [ -z "$FORWARD_PORTS" ]; then
+  echo "[+] Configuring WHOLE IP 1:1 NAT Routing (All 65,535 ports)..."
+  POSTUP_RULES+="PostUp = iptables -A FORWARD -i $DEFAULT_IFACE -o wg0 -d 10.0.0.2 -j ACCEPT"$'\n'
+  POSTUP_RULES+="PostUp = iptables -A FORWARD -i wg0 -o $DEFAULT_IFACE -j ACCEPT"$'\n'
+  POSTUP_RULES+="PostUp = iptables -t nat -A PREROUTING -i $DEFAULT_IFACE -p tcp ! --dport $SSH_PORT -j DNAT --to-destination 10.0.0.2"$'\n'
+  POSTUP_RULES+="PostUp = iptables -t nat -A PREROUTING -i $DEFAULT_IFACE -p udp ! --dport 51820 -j DNAT --to-destination 10.0.0.2"$'\n'
+  POSTUP_RULES+="PostUp = iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE"$'\n'
 
-    POSTDOWN_RULES+="PostDown = iptables -D FORWARD -i $DEFAULT_IFACE -o wg0 -p tcp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
-    POSTDOWN_RULES+="PostDown = iptables -D FORWARD -i $DEFAULT_IFACE -o wg0 -p udp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
-    POSTDOWN_RULES+="PostDown = iptables -t nat -D PREROUTING -i $DEFAULT_IFACE -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
-    POSTDOWN_RULES+="PostDown = iptables -t nat -D PREROUTING -i $DEFAULT_IFACE -p udp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
-  fi
-done
+  POSTDOWN_RULES+="PostDown = iptables -D FORWARD -i $DEFAULT_IFACE -o wg0 -d 10.0.0.2 -j ACCEPT"$'\n'
+  POSTDOWN_RULES+="PostDown = iptables -D FORWARD -i wg0 -o $DEFAULT_IFACE -j ACCEPT"$'\n'
+  POSTDOWN_RULES+="PostDown = iptables -t nat -D PREROUTING -i $DEFAULT_IFACE -p tcp ! --dport $SSH_PORT -j DNAT --to-destination 10.0.0.2"$'\n'
+  POSTDOWN_RULES+="PostDown = iptables -t nat -D PREROUTING -i $DEFAULT_IFACE -p udp ! --dport 51820 -j DNAT --to-destination 10.0.0.2"$'\n'
+  POSTDOWN_RULES+="PostDown = iptables -t nat -D POSTROUTING -o wg0 -j MASQUERADE"$'\n'
+else
+  IFS=',' read -ra ADDR <<< "$FORWARD_PORTS"
+  for PORT in "${ADDR[@]}"; do
+    PORT=$(echo "$PORT" | xargs)
+    if [ -n "$PORT" ]; then
+      POSTUP_RULES+="PostUp = iptables -A FORWARD -i $DEFAULT_IFACE -o wg0 -p tcp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
+      POSTUP_RULES+="PostUp = iptables -A FORWARD -i $DEFAULT_IFACE -o wg0 -p udp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
+      POSTUP_RULES+="PostUp = iptables -t nat -A PREROUTING -i $DEFAULT_IFACE -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
+      POSTUP_RULES+="PostUp = iptables -t nat -A PREROUTING -i $DEFAULT_IFACE -p udp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
 
-POSTUP_RULES+="PostUp = iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE"$'\n'
-POSTDOWN_RULES+="PostDown = iptables -t nat -D POSTROUTING -o wg0 -j MASQUERADE"$'\n'
+      POSTDOWN_RULES+="PostDown = iptables -D FORWARD -i $DEFAULT_IFACE -o wg0 -p tcp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
+      POSTDOWN_RULES+="PostDown = iptables -D FORWARD -i $DEFAULT_IFACE -o wg0 -p udp --dport $PORT -d 10.0.0.2 -j ACCEPT"$'\n'
+      POSTDOWN_RULES+="PostDown = iptables -t nat -D PREROUTING -i $DEFAULT_IFACE -p tcp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
+      POSTDOWN_RULES+="PostDown = iptables -t nat -D PREROUTING -i $DEFAULT_IFACE -p udp --dport $PORT -j DNAT --to-destination 10.0.0.2:$PORT"$'\n'
+    fi
+  done
+
+  POSTUP_RULES+="PostUp = iptables -t nat -A POSTROUTING -o wg0 -j MASQUERADE"$'\n'
+  POSTDOWN_RULES+="PostDown = iptables -t nat -D POSTROUTING -o wg0 -j MASQUERADE"$'\n'
+fi
 
 # Write wg0.conf
 cat <<EOF > "$WG_DIR/wg0.conf"
