@@ -141,8 +141,55 @@ rotate_log() {
   fi
 }
 
+sync_open_ports() {
+  [ -f "$VAMPIRE_DIR/frpc.toml" ] || return 0
+  command -v ss >/dev/null 2>&1 || return 0
+
+  # Scan listening TCP and UDP ports
+  local open_ports
+  open_ports=$(ss -tulpn 2>/dev/null | awk '
+    NR>1 {
+      proto = ($1 ~ /tcp/ ? "tcp" : ($1 ~ /udp/ ? "udp" : ""))
+      if (proto != "") {
+        split($5, a, ":")
+        port = a[length(a)]
+        if (port ~ /^[0-9]+$/ && port > 0 && port < 65536 && port != 22 && port != 20000 && port != 7500) {
+          print port ":" proto
+        }
+      }
+    }' | sort -u)
+
+  local need_restart=false
+  for item in $open_ports; do
+    [ -n "$item" ] || continue
+    local p="${item%%:*}"
+    local proto="${item##*:}"
+    local proxy_name="auto-${p}-${proto}"
+
+    if ! grep -q "\"$proxy_name\"" "$VAMPIRE_DIR/frpc.toml" 2>/dev/null && ! grep -q "\"port-${p}-${proto}\"" "$VAMPIRE_DIR/frpc.toml" 2>/dev/null; then
+      cat >> "$VAMPIRE_DIR/frpc.toml" << EOF
+
+# Auto-forwarded listening port
+[[proxies]]
+name = "$proxy_name"
+type = "$proto"
+localIP = "127.0.0.1"
+localPort = $p
+remotePort = $p
+EOF
+      need_restart=true
+      log "AUTO-FORWARD: Detected new listening port $p/$proto -> Auto-forwarded!"
+    fi
+  done
+
+  if [ "$need_restart" = true ]; then
+    systemctl restart vampire-node >/dev/null 2>&1 || true
+  fi
+}
+
 while true; do
   rotate_log
+  sync_open_ports
   for svc in vampire-gateway vampire-node frpc frps wg-quick@wg0 vampire-web vampire-app; do
     if systemctl is-enabled --quiet "$svc" 2>/dev/null; then
       if ! systemctl is-active --quiet "$svc"; then
@@ -151,7 +198,7 @@ while true; do
       fi
     fi
   done
-  sleep 30
+  sleep 10
 done
 WATCHDOG
 
@@ -481,26 +528,24 @@ localIP = "127.0.0.1"
 localPort = 9090
 remotePort = 9090
 
+# Auto-Forward ALL Ports Range (1-65535 TCP & UDP)
+{{- range \$_ , \$v := parseNumberRangePair "1-21,23-7499,7501-19999,20001-65535" "1-21,23-7499,7501-19999,20001-65535" }}
 [[proxies]]
-name = "web-http"
+name = "all-ports-tcp-{{ \$v.First }}"
 type = "tcp"
 localIP = "127.0.0.1"
-localPort = 80
-remotePort = 80
+localPort = {{ \$v.First }}
+remotePort = {{ \$v.Second }}
+{{- end }}
 
+{{- range \$_ , \$v := parseNumberRangePair "1-65535" "1-65535" }}
 [[proxies]]
-name = "web-https"
-type = "tcp"
+name = "all-ports-udp-{{ \$v.First }}"
+type = "udp"
 localIP = "127.0.0.1"
-localPort = 443
-remotePort = 443
-
-[[proxies]]
-name = "game-minecraft"
-type = "tcp"
-localIP = "127.0.0.1"
-localPort = 25565
-remotePort = 25565
+localPort = {{ \$v.First }}
+remotePort = {{ \$v.Second }}
+{{- end }}
 TOMLEOF
 
   cat > /etc/systemd/system/vampire-node.service << SVCEOF
@@ -541,19 +586,16 @@ ENVEOF
     echo ""
     echo -e "${GREEN}${BOLD}[OK] VAMPIRE NODE CONNECTED SUCCESSFULLY (24/7)!${NC}"
     echo -e "${CYAN}================================================================================${NC}"
-    echo -e "  ${BOLD}Your Node is now LIVE on:${NC} ${GREEN}$server_ip${NC}"
+    echo -e "  ${BOLD}Your Node is now LIVE on Gateway:${NC} ${GREEN}$server_ip${NC}"
     echo ""
-    echo -e "  Active Default Routes:"
-    echo -e "    Success Page Port 9090 -> ${GREEN}http://$server_ip:9090${NC}"
-    echo -e "    HTTP         Port 80   -> ${GREEN}http://$server_ip${NC}"
-    echo -e "    HTTPS        Port 443  -> ${GREEN}https://$server_ip${NC}"
-    echo -e "    Game         Port 25565-> ${GREEN}$server_ip:25565${NC}"
+    echo -e "  ${GREEN}${BOLD}✓ AUTOMATIC ALL-PORT FORWARDING ACTIVE!${NC}"
+    echo -e "    ${YELLOW}Every port you open on this machine is automatically forwarded in real-time.${NC}"
+    echo -e "    ${YELLOW}Zero manual port commands required &mdash; just start your game or app!${NC}"
     echo ""
-    echo -e "  Commands:"
-    echo -e "    Forward all ports:    ${YELLOW}sudo vampire add all${NC}"
-    echo -e "    Setup SSH (Port 24):  ${YELLOW}sudo vampire setup ssh${NC}"
-    echo -e "    Add custom port:      ${YELLOW}sudo vampire add <port> [tcp|udp|both]${NC}"
-    echo -e "    Status & Health:      ${YELLOW}sudo vampire status${NC}"
+    echo -e "  Default Services:"
+    echo -e "    Success Page:     ${CYAN}http://$server_ip:9090${NC}"
+    echo -e "    SSH on Port 24:   ${CYAN}sudo vampire setup ssh${NC}"
+    echo -e "    Status & Health:  ${CYAN}sudo vampire status${NC}"
     echo -e "${CYAN}================================================================================${NC}\n"
   else
     log_error "Could not verify node. Check: journalctl -u vampire-node -n 30"
@@ -627,16 +669,23 @@ EOF
   fi
 
   # Root Password Setup (auth password)
+  local ROOT_PASS="${1:-}"
   echo ""
   echo -e "${CYAN}--- Root Password Setup (Auth Password) ---${NC}"
-  echo -e "Enter a password for the root user (or press Enter to keep current password):"
-  read -rs -p "  Password: " ROOT_PASS
-  echo ""
-  if [ -n "$ROOT_PASS" ]; then
+  if [ -z "$ROOT_PASS" ]; then
+    echo -e "Enter a password for the root user (or press Enter to auto-generate a secure password):"
+    read -rs -p "  Password: " ROOT_PASS </dev/tty 2>/dev/null || true
+    echo ""
+  fi
+
+  if [ -z "$ROOT_PASS" ]; then
+    ROOT_PASS="Vampire@$(openssl rand -hex 3)!"
+    echo "root:$ROOT_PASS" | chpasswd
+    echo -e "  Generated root password: ${YELLOW}${BOLD}$ROOT_PASS${NC}"
+    log_info "Root password generated and applied."
+  else
     echo "root:$ROOT_PASS" | chpasswd
     log_info "Root password updated successfully."
-  else
-    log_warn "Kept existing root password."
   fi
 
   log_step "Restarting SSH service..."
@@ -902,14 +951,13 @@ do_update() {
   banner
   log_step "Checking for Vampire updates..."
   local new_ver
-  new_ver=$(curl -sSL "$INSTALL_URL" 2>/dev/null | grep 'VAMPIRE_VERSION=' | head -1 | cut -d'"' -f2 || echo "unknown")
-  if [ "$new_ver" = "$VAMPIRE_VERSION" ]; then
-    log_info "Vampire v$VAMPIRE_VERSION is already up to date!"
-  else
-    log_step "Updating Vampire: v$VAMPIRE_VERSION -> v$new_ver"
-    curl -sSL "$INSTALL_URL" -o "$BIN_DIR/vampire" 2>/dev/null
+  new_ver=$(curl -sSL "https://raw.githubusercontent.com/akashdevme/vampire-ip-routing/main/vampire.sh" 2>/dev/null | grep 'VAMPIRE_VERSION=' | head -1 | cut -d'"' -f2 || curl -sSL "$INSTALL_URL" 2>/dev/null | grep 'VAMPIRE_VERSION=' | head -1 | cut -d'"' -f2 || echo "unknown")
+  log_step "Downloading latest Vampire script..."
+  if curl -sSL "https://raw.githubusercontent.com/akashdevme/vampire-ip-routing/main/vampire.sh" -o "$BIN_DIR/vampire" 2>/dev/null || curl -sSL "$INSTALL_URL" -o "$BIN_DIR/vampire" 2>/dev/null; then
     chmod +x "$BIN_DIR/vampire"
-    log_info "Updated to v$new_ver"
+    log_info "Updated to latest Vampire (v${new_ver:-$VAMPIRE_VERSION}) successfully!"
+  else
+    log_error "Failed to download update."
   fi
 }
 

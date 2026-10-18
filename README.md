@@ -81,34 +81,26 @@ sudo vampire setup ssh
 
 ---
 
-## 🌐 Port Forwarding
+## ⚡ Automatic Port Forwarding (Zero Manual Setup)
 
-### Forward ALL Ports (1-65535)
+**No manual port adding required!** 
 
-To forward all TCP and UDP ports:
-```bash
-sudo vampire add all
-```
+Every port you open on your Node server is **automatically forwarded in real-time**:
+- Launch Minecraft on `25565`? Immediately accessible at `<GATEWAY_IP>:25565`.
+- Launch FiveM on `30120`? Immediately accessible at `<GATEWAY_IP>:30120`.
+- Launch a web app on `80`/`443` or `3000`? Accessible immediately on your Gateway IP.
+- Any game server, Docker container, or database on TCP or UDP works out of the box!
 
-### Forward Custom Ports
+The built-in auto-port daemon continuously detects new listening ports and auto-forwards them instantly.
 
-To forward any specific single port:
-```bash
-sudo vampire add <port> [tcp|udp|both]
-```
+---
 
-**Examples:**
-```bash
-sudo vampire add 25565        # Minecraft (TCP + UDP)
-sudo vampire add 30120 tcp    # FiveM TCP
-sudo vampire add 8211 udp     # Palworld / Rust UDP
-```
+### Manual Port Commands (Optional)
 
-To stop forwarding a port:
-```bash
-sudo vampire remove <port>
-sudo vampire remove all       # Remove all-ports range
-```
+If you ever wish to manually manage specific port rules:
+- `sudo vampire add all` &mdash; Force-forward all 65,535 TCP & UDP ports
+- `sudo vampire add <port> [tcp|udp|both]` &mdash; Forward a custom port
+- `sudo vampire remove <port|all>` &mdash; Remove a port forward rule
 
 ---
 

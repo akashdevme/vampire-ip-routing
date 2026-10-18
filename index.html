@@ -421,28 +421,13 @@
 
     <!-- Port Forwarding -->
     <div class="card">
-      <div class="card-title"><span class="icon">🌐</span> Port Forwarding</div>
+      <div class="card-title"><span class="icon">⚡</span> Automatic Port Forwarding (Built-in)</div>
+      <p class="step-desc">
+        <strong>Zero manual port commands required!</strong> Every port you open or listen on your Node server (e.g. Minecraft <code>25565</code>, FiveM <code>30120</code>, Web <code>80/443</code>, Palworld <code>8211</code>) is <strong>automatically forwarded to your Gateway in real-time</strong>.
+      </p>
 
-      <!-- Forward ALL Ports -->
-      <div class="step-label">Option A &mdash; Forward ALL Ports (1-65535)</div>
-      <p class="step-desc">Forwards all TCP &amp; UDP ports across your servers:</p>
-      <div class="cmd-box">
-        <span class="cmd-text" id="cmd-all">sudo vampire add all</span>
-        <button class="copy-btn" onclick="copyCode('cmd-all', this)">Copy</button>
-      </div>
-
-      <!-- Forward Custom Port -->
-      <div class="step-label">Option B &mdash; Forward a Specific Port</div>
-      <p class="step-desc">Forward individual game or application ports:</p>
-      <div class="cmd-box">
-        <span class="cmd-text" id="cmd-port">sudo vampire add &lt;port&gt; [tcp|udp|both]</span>
-        <button class="copy-btn" onclick="copyCode('cmd-port', this)">Copy</button>
-      </div>
-      <div class="note-box">
-        <strong>Examples:</strong><br>
-        &bull; Minecraft: <code>sudo vampire add 25565</code><br>
-        &bull; FiveM: <code>sudo vampire add 30120 tcp</code><br>
-        &bull; Palworld / Rust: <code>sudo vampire add 8211 udp</code>
+      <div class="note-box" style="margin-bottom: 0;">
+        <strong>✓ 100% Automatic:</strong> Just start your game server, website, Docker container, or database on your Node &mdash; it is instantly accessible on your Gateway IP!
       </div>
     </div>
 
