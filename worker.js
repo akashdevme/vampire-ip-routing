@@ -9,51 +9,43 @@
 
 import vampireScript from "./vampire.sh";
 import landingHtml from "./index.html";
-import guideHtml from "./guide.html";
 
 const FALLBACK_KEY = "AQ.Ab8RN6IS0ITjOkeVLJC45xKAow6nANemr0HLEcMt1Ehf2MDTfg";
 
-const SYSTEM_PROMPT = `You are Vampire AI, the official technical support bot for VampireHosting (vampirenodes.in). VampireHosting uses FRP (fast reverse proxy) to route cheap, high-RAM private VPSs (NAT VPS, LXC containers, IPv6-only VPS) through a public IPv4 gateway using persistent TCP tunnels for 24/7 uptime. Key commands: "sudo vampire gateway" (public VPS), "sudo vampire node --server IP --token TOKEN" (private VPS), "sudo vampire add <port>" (forward extra ports), "sudo vampire 247" (auto-configure 24/7 uptime & anti-SSH-disconnect), "sudo vampire status" (health), "sudo vampire ai" (AI chat). Provide concise, accurate, copy-paste-ready Linux bash commands for: server setup, port forwarding, firewall (ufw/iptables), game servers (Minecraft 25565, FiveM 30120, Palworld 8211, Rust 28015), Pterodactyl wings, nginx reverse proxy, SSL with certbot, and debugging tunnels. Format code in markdown code blocks.`;
+const SYSTEM_PROMPT = `You are Vampire AI, the technical support assistant for VampireHosting (vampirenodes.in). VampireHosting provides 1-command 24/7 IP routing, all-ports forwarding, and persistent TCP/UDP tunnels. Key commands: "sudo vampire gateway" (Gateway server), "sudo vampire node --server IP --token TOKEN" (Node server), "sudo vampire setup ssh" (configure SSH on port 24 with root login and password auth), "sudo vampire add all" (forward all 65,535 TCP/UDP ports), "sudo vampire add <port>" (forward custom port), "sudo vampire 247" (24/7 uptime & disconnect shield), "sudo vampire status" (health). Success page runs on port 9090. Provide concise, copy-paste-ready Linux bash commands.`;
 
 const TERMINAL_GUIDE = `
 ================================================================================
-  VAMPIRE HOSTING -- 24/7 UPTIME & DISCONNECT PROTECTION GUIDE
+  VAMPIRE HOSTING -- 1-COMMAND IP ROUTING & PORT FORWARDING GUIDE
 ================================================================================
 
-1. WHOLE IP ROUTING (Kernel-Level WireGuard Tunnel -- ALL 65,535 PORTS):
-   ---------------------------------------------------------------------
-   Runs directly as a kernel network interface (wg0). Auto-starts on boot.
-   It NEVER shuts down when SSH closes and forwards all 65,535 TCP/UDP ports!
+1. STEP 1 (Gateway Server):
+   curl -sSL https://iproute.vampirenodes.in | sudo bash -s -- gateway
 
-   Step 1 (On Public Gateway VPS):
-     sudo bash wireguard-server.sh
-     -> Choose Option 1 (WHOLE IP: ALL 65,535 Ports)
+2. STEP 2 (Node Server):
+   curl -sSL https://iproute.vampirenodes.in | sudo bash -s -- node --server <GATEWAY_IP> --token <TOKEN>
 
-   Step 2 (On Private High-RAM VPS):
-     sudo bash wireguard-client.sh
-     -> Enter Public IP & keys when prompted
+3. SSH SETUP ON PORT 24 (PermitRootLogin & Password Auth):
+   sudo vampire setup ssh
+   -> Connect via: ssh root@<GATEWAY_IP> -p 24
 
-2. VAMPIRE 24/7 DISCONNECT SHIELD (For FRP / vampire.sh):
-   -------------------------------------------------------
-   Run on your VPS:
-     sudo vampire 247
+4. FORWARD ALL PORTS (1-65535 TCP & UDP):
+   sudo vampire add all
 
-   * Enables user lingering so SSH logout never kills processes
-   * Configures systemd-logind: KillUserProcesses=no
-   * Tunes TCP keepalive (60s probe cycle) to avoid NAT timeouts
-   * Auto-healing watchdog monitors and restarts tunnels every 30s
+5. FORWARD CUSTOM PORT:
+   sudo vampire add <port> [tcp|udp|both]
+   Examples: sudo vampire add 25565 | sudo vampire add 30120 tcp
 
-3. RUNNING YOUR GAME SERVER / APP 24/7:
-   -------------------------------------
-   Option A (One-Command 24/7 Daemonizer):
-     sudo vampire 247 run "java -Xmx4G -jar server.jar nogui"
-     sudo vampire 247 run "./start.sh"
+6. 24/7 UPTIME & DISCONNECT SHIELD:
+   sudo vampire 247
+   sudo vampire 247 run "java -Xmx4G -jar server.jar nogui"
 
-   Option B (Interactive Screen for Game Console):
-     sudo apt install screen -y && screen -S myserver
-     -> Start your server inside the screen
-     -> Press Ctrl+A, then D to detach safely (you can now close SSH!)
-     -> Re-attach anytime: screen -r myserver
+7. SUCCESS VERIFICATION PAGE (Port 9090):
+   http://<GATEWAY_IP>:9090
+
+8. HEALTH CHECK & LOGS:
+   sudo vampire status
+   sudo vampire logs
 
 Web Guide: https://iproute.vampirenodes.in/guide
 ================================================================================
@@ -132,16 +124,8 @@ export default {
         });
       }
 
-      return new Response(guideHtml, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "public, max-age=300",
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "SAMEORIGIN",
-          "Referrer-Policy": "strict-origin-when-cross-origin",
-        },
-      });
+      // Browser — redirect to main page installation guide
+      return Response.redirect(`${url.origin}/#guide`, 302);
     }
 
     // ------------------------------------------------------------------

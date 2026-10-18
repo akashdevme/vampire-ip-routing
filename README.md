@@ -1,8 +1,8 @@
-# 🦇 Vampire Hosting — 1-Command ALL-PORTS Public IP Router
+# 🦇 Vampire — 1-Command IP Routing & Port Forwarding Tool
 
-> **Route ALL 65,535 TCP & UDP Ports from a Public IPv4 VPS to any Private/NAT/Non-Public High-RAM VPS in ONE command!**
+> **1-Command 24/7 IP Routing, All-Ports Forwarding, SSH on Port 24, and Disconnect Protection.**
 
-No more specifying ports one by one (no manual 80, 443, 25565...). Once connected, **any port you open on your high-RAM private VPS is immediately live and accessible on your Public IPv4.**
+Route and port forward traffic across your servers with persistent TCP/UDP tunnels and zero downtime.
 
 ---
 
@@ -11,91 +11,151 @@ No more specifying ports one by one (no manual 80, 443, 25565...). Once connecte
 ```
                         [ Internet / Public Users ]
                                     │
-                                    │ (Any Port: 80, 443, 25565, 7777, 8080...)
+                                    │ (Traffic: Port 24, 80, 443, 25565, 9090, 1-65535...)
                                     ▼
                  ┌──────────────────────────────────────┐
-                 │          Public IPv4 VPS             │
-                 │   (Port 22 SSH kept for management)  │
-                 │  ALL other ports → Forwarded to Node │
+                 │            Gateway Server            │
+                 │    (Receives traffic on Public IP)   │
                  └──────────────────┬───────────────────┘
                                     │
-                                    │ WireGuard Fast Tunnel
+                                    │ 24/7 High-Performance Tunnel
                                     ▼
                  ┌──────────────────────────────────────┐
-                 │    Private / NAT VPS (Large RAM)     │
-                 │   (Runs your Games, Web, Apps, DB)   │
+                 │             Node Server              │
+                 │    (Runs your Games, Web, Apps, SSH) │
                  └──────────────────────────────────────┘
 ```
 
 ---
 
-## 🚀 1-Command Setup
+## 🚀 1-Command Installation
 
-### Step 1: On your Public IPv4 VPS (Gateway)
+### Step 1: On your Gateway Server
 
 Run:
 ```bash
-sudo bash vampire.sh gateway
+curl -sSL https://iproute.vampirenodes.in | sudo bash -s -- gateway
+```
+*(Or if cloned locally: `sudo bash vampire.sh gateway`)*
+
+**What it does automatically:**
+- Auto-detects public IPv4.
+- Generates a secure authorization token.
+- Sets up and enables the 24/7 routing gateway service.
+- **Outputs the ready-to-use 1-line command for your Node server.**
+
+---
+
+### Step 2: On your Node Server
+
+Copy and run the command printed by Step 1:
+```bash
+curl -sSL https://iproute.vampirenodes.in | sudo bash -s -- node --server <GATEWAY_IP> --token <SECRET_TOKEN>
+```
+
+**Once connected:**
+- Ports `80` (HTTP), `443` (HTTPS), `25565` (Minecraft), and `9090` (Success Page) are live immediately.
+- Verification page is accessible at `http://<GATEWAY_IP>:9090`.
+
+---
+
+## 🔑 SSH Setup on Port 24
+
+To access your server via SSH on port 24 with root login and password authentication:
+
+```bash
+sudo vampire setup ssh
 ```
 
 **What it does automatically:**
-- Auto-detects public IPv4 and network interface.
-- Automatically detects and protects your active SSH port (e.g. `22`) so you never get locked out.
-- Generates encryption keys for both the server and client.
-- Configures kernel routing and `iptables` to forward **ALL 65,535 TCP & UDP ports** to the private node.
-- **Prints a ready-to-use 1-line command for your private VPS!**
+- Configures SSH daemon to listen on **Port 24**.
+- Enables `PermitRootLogin yes`.
+- Enables `PasswordAuthentication yes`.
+- Prompts you to set/update the root password.
+- Restarts the SSH service cleanly.
+- Forwards port 24 through the tunnel to your Gateway.
+- Prints the exact connection command:
+  ```bash
+  ssh root@<GATEWAY_IP> -p 24
+  ```
 
 ---
 
-### Step 2: On your Private / Non-Public VPS (Worker Node)
+## 🌐 Port Forwarding
 
-Copy and run the exact command printed by Step 1:
+### Forward ALL Ports (1-65535)
+
+To forward all TCP and UDP ports:
 ```bash
-sudo bash vampire.sh node --server <PUBLIC_IP> --server-key "<SERVER_KEY>" --client-key "<CLIENT_KEY>"
+sudo vampire add all
 ```
 
-*(Or via your branded 1-liner):*
+### Forward Custom Ports
+
+To forward any specific single port:
 ```bash
-curl -sSL https://iproute.vampirenodes.in | sudo bash -s -- node --server <PUBLIC_IP> --server-key "<SERVER_KEY>" --client-key "<CLIENT_KEY>"
+sudo vampire add <port> [tcp|udp|both]
+```
+
+**Examples:**
+```bash
+sudo vampire add 25565        # Minecraft (TCP + UDP)
+sudo vampire add 30120 tcp    # FiveM TCP
+sudo vampire add 8211 udp     # Palworld / Rust UDP
+```
+
+To stop forwarding a port:
+```bash
+sudo vampire remove <port>
+sudo vampire remove all       # Remove all-ports range
 ```
 
 ---
 
-## 🎉 Done! Everything is Routed
+## 🛡️ 24/7 Disconnect Protection & App Daemonizer
 
-Now your private high-RAM VPS has the power of the public IPv4:
-- Run a web server on port `80`/`443`? Accessible at `http://<PUBLIC_IP>` / `https://<PUBLIC_IP>`.
-- Run Minecraft on port `25565`? Players connect to `<PUBLIC_IP>:25565`.
-- Run FiveM on port `30120`? Players connect to `<PUBLIC_IP>:30120`.
-- Run Palworld / Rust / CS2 on any UDP port? Works automatically.
-- Run Docker, databases, or custom apps? All ports work out of the box with **ZERO extra configuration**!
+Prevent SSH disconnects from closing your processes, tunnels, and servers:
 
----
-
-## 🛠️ Management Commands
-
-You can run `vampire` from anywhere on either server:
-- Ensure 24/7 online uptime & prevent SSH logout from killing services:
-  ```bash
-  sudo vampire 247
-  ```
-- Turn any game server or application (Minecraft, Node, Python, FiveM) into a 24/7 background service:
-  ```bash
-  sudo vampire 247 app
-  ```
-- Check live tunnel status:
-  ```bash
-  sudo vampire status
-  ```
-- Remove and restore original firewall settings:
-  ```bash
-  sudo vampire uninstall
-  ```
-
----
-
-## 🛡️ Firewall Note
-Ensure port `51820` (UDP) is open in your Public VPS cloud provider's firewall / security group (e.g., AWS Security Group, Oracle Cloud VCN ingress rule, DigitalOcean firewall, or UFW):
 ```bash
-sudo ufw allow 51820/udp
+sudo vampire 247
+```
+- Enables user lingering so processes survive SSH logout.
+- Configures systemd-logind (`KillUserProcesses=no`).
+- Tunes TCP keepalive (60s probe cycles).
+- Enables 30-second auto-healing watchdog service.
+
+### Run Any Server / Game 24/7
+
+Daemonize any app or game into an auto-restarting background systemd service:
+```bash
+sudo vampire 247 run "java -Xmx4G -jar server.jar nogui"
+```
+
+---
+
+## 📋 Commands Reference
+
+| Command | Description |
+| :--- | :--- |
+| `sudo vampire gateway` | Setup Gateway Server |
+| `sudo vampire node --server <IP> --token <TOKEN>` | Connect Node Server |
+| `sudo vampire setup ssh` | Configure SSH on port 24 (root + password) |
+| `sudo vampire add all` | Forward all 65,535 TCP & UDP ports |
+| `sudo vampire add <port> [proto]` | Forward a specific port (`tcp`, `udp`, or `both`) |
+| `sudo vampire remove <port\|all>` | Stop forwarding a port |
+| `sudo vampire 247` | Enable 24/7 uptime & anti-SSH-disconnect shield |
+| `sudo vampire 247 app` | Interactive 24/7 service daemonizer wizard |
+| `sudo vampire status` | Check service health & active forwarded routes |
+| `sudo vampire logs` | View real-time tunnel logs |
+| `sudo vampire page` | Start success test page on Port 9090 |
+| `sudo vampire update` | Update vampire script to latest release |
+| `sudo vampire uninstall` | Completely uninstall vampire services |
+
+---
+
+## 🌐 Success Verification Page
+
+When the Node connects, the success test page is served on port 9090:
+```
+http://<GATEWAY_IP>:9090
 ```
