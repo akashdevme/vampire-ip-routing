@@ -143,33 +143,50 @@ rotate_log() {
 
 sync_open_ports() {
   [ -f "$VAMPIRE_DIR/frpc.toml" ] || return 0
-  command -v ss >/dev/null 2>&1 || return 0
 
-  # Scan listening TCP and UDP ports
-  local open_ports
-  open_ports=$(ss -tulpn 2>/dev/null | awk '
-    NR>1 {
-      proto = ($1 ~ /tcp/ ? "tcp" : ($1 ~ /udp/ ? "udp" : ""))
-      if (proto != "") {
-        split($5, a, ":")
-        port = a[length(a)]
-        if (port ~ /^[0-9]+$/ && port > 0 && port < 65536 && port != 22 && port != 20000 && port != 7500) {
-          print port ":" proto
+  # Scan all listening TCP and UDP ports
+  local open_ports=""
+  if command -v ss >/dev/null 2>&1; then
+    open_ports=$(ss -tulpn 2>/dev/null | awk '
+      NR>1 {
+        proto = ""
+        if ($1 ~ /^tcp/) proto = "tcp"
+        else if ($1 ~ /^udp/) proto = "udp"
+        if (proto != "") {
+          split($5, a, ":")
+          port = a[length(a)]
+          if (port ~ /^[0-9]+$/ && port > 0 && port < 65536 && port != 20000 && port != 7500) {
+            print port ":" proto
+          }
         }
-      }
-    }' | sort -u)
+      }' | sort -u)
+  elif command -v netstat >/dev/null 2>&1; then
+    open_ports=$(netstat -tulpn 2>/dev/null | awk '
+      NR>2 {
+        proto = ""
+        if ($1 ~ /^tcp/) proto = "tcp"
+        else if ($1 ~ /^udp/) proto = "udp"
+        if (proto != "") {
+          split($4, a, ":")
+          port = a[length(a)]
+          if (port ~ /^[0-9]+$/ && port > 0 && port < 65536 && port != 20000 && port != 7500) {
+            print port ":" proto
+          }
+        }
+      }' | sort -u)
+  fi
 
   local need_restart=false
   for item in $open_ports; do
     [ -n "$item" ] || continue
     local p="${item%%:*}"
     local proto="${item##*:}"
-    local proxy_name="auto-${p}-${proto}"
+    local proxy_name="port-${p}-${proto}"
 
-    if ! grep -q "\"$proxy_name\"" "$VAMPIRE_DIR/frpc.toml" 2>/dev/null && ! grep -q "\"port-${p}-${proto}\"" "$VAMPIRE_DIR/frpc.toml" 2>/dev/null; then
+    if ! grep -q "remotePort = $p" "$VAMPIRE_DIR/frpc.toml" 2>/dev/null; then
       cat >> "$VAMPIRE_DIR/frpc.toml" << EOF
 
-# Auto-forwarded listening port
+# Auto-forwarded online port
 [[proxies]]
 name = "$proxy_name"
 type = "$proto"
@@ -178,7 +195,7 @@ localPort = $p
 remotePort = $p
 EOF
       need_restart=true
-      log "AUTO-FORWARD: Detected new listening port $p/$proto -> Auto-forwarded!"
+      log "AUTO-FORWARD: Port $p/$proto is online -> Forwarded to Gateway!"
     fi
   done
 
@@ -458,6 +475,10 @@ SVCEOF
   sleep 1
   systemctl restart vampire-gateway
 
+  # Ensure firewall allows control port and dashboard
+  command -v ufw >/dev/null 2>&1 && ufw allow $DEFAULT_BIND_PORT/tcp && ufw allow $DASHBOARD_PORT/tcp >/dev/null 2>&1 || true
+  command -v iptables >/dev/null 2>&1 && iptables -I INPUT -p tcp --dport $DEFAULT_BIND_PORT -j ACCEPT && iptables -I INPUT -p tcp --dport $DASHBOARD_PORT -j ACCEPT >/dev/null 2>&1 || true
+
   cat > "$VAMPIRE_DIR/gateway.env" << ENVEOF
 PUBLIC_IP=$PUBLIC_IP
 TOKEN=$TOKEN
@@ -528,25 +549,23 @@ localIP = "127.0.0.1"
 localPort = 9090
 remotePort = 9090
 
-# Auto-Forward ALL Ports Range (1-65535 TCP & UDP)
-{{- range \$_ , \$v := parseNumberRangePair "1-21,23-7499,7501-19999,20001-65535" "1-21,23-7499,7501-19999,20001-65535" }}
 [[proxies]]
-name = "all-ports-tcp-{{ \$v.First }}"
+name = "web-http"
 type = "tcp"
 localIP = "127.0.0.1"
-localPort = {{ \$v.First }}
-remotePort = {{ \$v.Second }}
-{{- end }}
+localPort = 80
+remotePort = 80
 
-{{- range \$_ , \$v := parseNumberRangePair "1-65535" "1-65535" }}
 [[proxies]]
-name = "all-ports-udp-{{ \$v.First }}"
-type = "udp"
+name = "web-https"
+type = "tcp"
 localIP = "127.0.0.1"
-localPort = {{ \$v.First }}
-remotePort = {{ \$v.Second }}
-{{- end }}
+localPort = 443
+remotePort = 443
 TOMLEOF
+
+  # Scan and auto-forward every port that is already online on this node
+  sync_open_ports
 
   cat > /etc/systemd/system/vampire-node.service << SVCEOF
 [Unit]
@@ -764,38 +783,10 @@ add_port() {
 
   # Handle "all" ports forwarding
   if [ "$port" = "all" ]; then
-    log_step "Forwarding ALL ports (TCP & UDP 1-65535)..."
-
-    if grep -q "all-ports-tcp" "$VAMPIRE_DIR/frpc.toml" 2>/dev/null; then
-      log_warn "All ports proxy already configured. Restarting..."
-      systemctl restart vampire-node
-      log_info "ALL ports are active!"; return 0
-    fi
-
-    cat >> "$VAMPIRE_DIR/frpc.toml" << 'ALLEOF'
-
-# Added: ALL PORTS FORWARDING
-{{- range $_, $v := parseNumberRangePair "1-21,23-7499,7501-19999,20001-65535" "1-21,23-7499,7501-19999,20001-65535" }}
-[[proxies]]
-name = "all-ports-tcp-{{ $v.First }}"
-type = "tcp"
-localIP = "127.0.0.1"
-localPort = {{ $v.First }}
-remotePort = {{ $v.Second }}
-{{- end }}
-
-{{- range $_, $v := parseNumberRangePair "1-65535" "1-65535" }}
-[[proxies]]
-name = "all-ports-udp-{{ $v.First }}"
-type = "udp"
-localIP = "127.0.0.1"
-localPort = {{ $v.First }}
-remotePort = {{ $v.Second }}
-{{- end }}
-ALLEOF
-
+    log_step "Scanning and auto-forwarding ALL online/listening ports..."
+    sync_open_ports
     systemctl restart vampire-node
-    log_info "ALL ports (TCP & UDP 1-65535) are now forwarded live 24/7!"
+    log_info "ALL online ports on this machine are now forwarded to Gateway!"
     return 0
   fi
 
